@@ -138,6 +138,7 @@ Public Class Macro
             ret.Add(New Macro("filter:name", "Filter", GetType(String), "Returns the script code of a filter of the active project that matches the specified name."))
             ret.Add(New Macro("media_info_audio:property", "MediaInfo Audio Property", GetType(String), "Returns a MediaInfo audio property for the video source file."))
             ret.Add(New Macro("media_info_video:property", "MediaInfo Video Property", GetType(String), "Returns a MediaInfo video property for the source file."))
+            ret.Add(New Macro("media_info_general:property", "MediaInfo General Property", GetType(String), "Returns a MediaInfo general property for the source file."))
             ret.Add(New Macro("random:digits", "Random Number", GetType(Integer), "Returns a 'digits' long random number, whereas 'digits' is clamped between 1 and 10."))
         End If
 
@@ -672,6 +673,16 @@ Public Class Macro
         If value.Contains("%media_info_audio:") Then
             For Each i As Match In Regex.Matches(value, "%media_info_audio:(.+?)%")
                 value = value.Replace(i.Value, MediaInfo.GetAudio(proj.LastOriginalSourceFile, i.Groups(1).Value))
+
+                If Not value.Contains("%") Then
+                    Return value
+                End If
+            Next
+        End If
+
+        If value.Contains("%media_info_general:") Then
+            For Each i As Match In Regex.Matches(value, "%media_info_general:(.+?)%")
+                value = value.Replace(i.Value, MediaInfo.GetGeneral(proj.LastOriginalSourceFile, i.Groups(1).Value))
 
                 If Not value.Contains("%") Then
                     Return value
