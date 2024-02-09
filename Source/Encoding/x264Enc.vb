@@ -62,8 +62,6 @@ Public Class x264Enc
             Encode("Video encoding Nth pass", GetArgs(3, p.Script), s.ProcessPriority)
             Encode("Video encoding last pass", GetArgs(2, p.Script), s.ProcessPriority)
         End If
-
-        AfterEncoding()
     End Sub
 
     Overloads Sub Encode(passName As String, commandLine As String, priority As ProcessPriorityClass)
@@ -73,7 +71,7 @@ Public Class x264Enc
             proc.Package = Package.x264
             proc.Header = passName
             proc.Priority = priority
-            proc.SkipStrings = {"kb/s, eta", "%]"}
+            proc.SkipStrings = {"kb/s, eta", "est.size", "%]"}
 
             If commandLine.Contains("|") Then
                 proc.File = "cmd.exe"
@@ -150,7 +148,7 @@ Public Class x264Enc
         Return Params.GetArgs(pass, script, OutputPath.DirAndBase + OutputExtFull, includePaths, True)
     End Function
 
-    Overrides Sub ShowConfigDialog()
+    Overrides Sub ShowConfigDialog(Optional path As String = Nothing)
         Dim newParams As New x264Params
         Dim store = ObjectHelp.GetCopy(ParamsStore)
         newParams.Init(store)
@@ -171,6 +169,10 @@ Public Class x264Enc
                     End Sub
 
             form.cms.Add("Save Profile...", a, Keys.Control Or Keys.S, Symbol.Save)
+
+            If Not String.IsNullOrWhiteSpace(path) Then
+                form.SimpleUI.ShowPage(path)
+            End If
 
             If form.ShowDialog() = DialogResult.OK Then
                 AutoCompCheckValue = CInt(newParams.CompCheckAimedQuality.Value)
@@ -209,7 +211,7 @@ Public Class x264Enc
         tester.IgnoredSwitches = "help longhelp fullhelp progress"
         tester.UndocumentedSwitches = "y4m fade-compensate log-file log-file-level progress-header"
         tester.Package = Package.x264
-        tester.CodeFile = Folder.Startup.Parent + "Encoding\x264Enc.vb"
+        tester.CodeFile = Path.Combine(Folder.Startup.Parent, "Encoding", "x264Enc.vb")
 
         Return tester.Test
     End Function
@@ -541,14 +543,14 @@ Public Class x264Params
     Property PipingToolAVS As New OptionParam With {
         .Text = "Pipe",
         .Name = "PipingToolAVS",
-        .VisibleFunc = Function() p.Script.IsAviSynth,
+        .VisibleFunc = Function() p.Script.Engine = ScriptEngine.AviSynth,
         .Options = {"Automatic", "None", "avs2pipemod y4m", "avs2pipemod raw", "ffmpeg y4m", "ffmpeg raw"}}
 
     Property PipingToolVS As New OptionParam With {
         .Text = "Pipe",
         .Name = "PipingToolVS",
         .VisibleFunc = Function() p.Script.Engine = ScriptEngine.VapourSynth,
-        .Options = {"Automatic", "None", "vspipe y4m", "vspipe raw", "ffmpeg y4m", "ffmpeg raw"}}
+        .Options = {"Automatic", "vspipe y4m", "vspipe raw", "ffmpeg y4m", "ffmpeg raw"}}
 
     Sub ApplyValues(isDefault As Boolean)
         Dim setVal = Sub(param As CommandLineParam, value As Object)
@@ -810,7 +812,7 @@ Public Class x264Params
                     New NumParam With {.Switch = "--crf-max", .Text = "Maximum CRF"},
                     New NumParam With {.Switch = "--qpmin", .Text = "Minimum QP"},
                     New NumParam With {.Switch = "--qpmax", .Text = "Maximum QP", .Init = 69},
-                    New NumParam With {.Switch = "--fade-compensate", .Text = "Fade Compensate", .Config = {0, 0, 0.1, 1}})
+                    New NumParam With {.Switch = "--fade-compensate", .Text = "Fade Compensate", .Config = {-1, 10, 0.05, 2}})
                 Add("Rate Control 2",
                     New NumParam With {.Switch = "--qpstep", .Text = "QP Step", .Init = 4},
                     New NumParam With {.Switch = "--ratetol", .Text = "Rate Tolerance", .Config = {0, 0, 0.1, 1}, .Init = 1},
@@ -1024,16 +1026,22 @@ Public Class x264Params
             Dim pipeCmd = ""
 
             If pipeTool = "automatic" Then
-                If p.Script.IsAviSynth OrElse Package.x264.Version.ToLowerInvariant.ContainsAny("amod", "djatom", "patman") Then
-                    pipeTool = "none"
+                If p.Script.IsAviSynth Then
+                    'pipeTool = If(Package.x264Type = x264Type.Vanilla, "avs2pipemod y4m", "none")
+                    pipeTool = "avs2pipemod y4m"
                 ElseIf p.Script.IsVapourSynth Then
                     pipeTool = "vspipe y4m"
                 End If
+                'If p.Script.IsAviSynth OrElse Package.x264.Version.ToLowerInvariant.ContainsAny("amod", "djatom", "patman") Then
+                '    pipeTool = "none"
+                'ElseIf p.Script.IsVapourSynth Then
+                '    pipeTool = "vspipe y4m"
+                'End If
             End If
 
             Select Case pipeTool
                 Case "vspipe y4m"
-                    pipeCmd = Package.vspipe.Path.Escape + " " + script.Path.Escape + " - --y4m | "
+                    pipeCmd = Package.vspipe.Path.Escape + " " + script.Path.Escape + " - --container y4m | "
                 Case "vspipe raw"
                     pipeCmd = Package.vspipe.Path.Escape + " " + script.Path.Escape + " - | "
                 Case "avs2pipemod y4m"

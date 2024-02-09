@@ -52,7 +52,7 @@ Public Class SelectionBox(Of T)
                 td.MenuButton.Value = SelectedBag
             End If
 
-            td.Text = If(Title = "", Application.ProductName, Title)
+            td.Text = If(Title = "", g.DefaultCommands.GetApplicationDetails(), Title)
             td.Title = Text
             td.Buttons = TaskButton.OkCancel
 

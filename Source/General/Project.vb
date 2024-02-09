@@ -12,6 +12,7 @@ Public Class Project
 
     Private Storage As ObjectStorage
 
+    Public AbortOnFrameMismatch As Boolean = True
     Public AddAttachmentsToMuxer As Boolean = True
     Public AdjustHeight As Boolean = True
     Public Audio0 As AudioProfile
@@ -19,6 +20,7 @@ Public Class Project
     Public AudioTracks As List(Of AudioProfile)
     Public AutoCompCheck As Boolean
     Public AutoCorrectCropValues As Boolean = True
+    Public AutoCropMode As AutoCropMode = AutoCropMode.DolbyVisionOnly
     Public AutoResizeImage As Integer
     Public AutoRotation As Boolean = True
     Public AutoSmartCrop As Boolean
@@ -30,7 +32,10 @@ Public Class Project
     Public CompCheckPercentage As Double = 5.0
     Public CompCheckTestblockSeconds As Double = 2.0
     Public Compressibility As Double
+    Public ConvertChromaSubsampling As Boolean = True
     Public ConvertSup2Sub As Boolean
+    Public CropWithTonemapping As Boolean = Vulkan.IsSupported
+    Public CropWithHighContrast As Boolean = False
     Public CustomSourceDAR As String = ""
     Public CustomSourcePAR As String = ""
     Public CustomTargetDAR As String = ""
@@ -39,22 +44,25 @@ Public Class Project
     Public CutFrameRate As Double
     Public CuttingMode As CuttingMode
     Public D2VAutoForceFilmThreshold As Single = 95.0F
-    Public DefaultSubtitle As DefaultSubtitleMode
+    Public DefaultSubtitle As DefaultSubtitleMode = DefaultSubtitleMode.Default
     Public DefaultTargetFolder As String = ""
     Public DefaultTargetName As String = ""
     Public DemuxAttachments As Boolean = True
     Public DemuxAudio As DemuxMode = DemuxMode.All
     Public DemuxChapters As Boolean = True
     Public DemuxVideo As Boolean = False
-    Public ExtractTimestamps As Boolean = True
-    Public ExtractTimestampsVfrOnly As Boolean = False
+    Public ExtractHdrmetadata As HdrmetadataMode = HdrmetadataMode.All
+    Public ExtractTimestamps As TimestampsMode = TimestampsMode.VfrOnly
     Public ExtractForcedSubSubtitles As Boolean = True
     Public FileExistAudio As FileExistMode
     Public FileExistVideo As FileExistMode
     Public FirstOriginalSourceFile As String
-    Public ForcedOutputMod As Integer = 8
+    Public ForcedOutputMod As Integer = 4
     Public ForcedOutputModOnlyIfCropped As Boolean = False
     Public HardcodedSubtitle As Boolean
+    Public Hdr10PlusMetadataFile As String
+    Public HdrDolbyVisionMetadataFile As DolbyVisionMetadataFile
+    Public HdrDolbyVisionMode As DoviMode = DoviMode.Mode2
     Public ImportVUIMetadata As Boolean = True
     Public ITU As Boolean
     Public LastOriginalSourceFile As String
@@ -82,7 +90,8 @@ Public Class Project
     Public SourceColorSpace As String
     Public SourceFile As String
     Public SourceFiles As List(Of String)
-    Public SourceFrameRate As Double
+    Public SourceFrameRate As Decimal
+    Public SourceFrameRateMode As String
     Public SourceFrames As Integer
     Public SourceHeight As Integer = 1080
     Public SourcePAR As Point = New Point(1, 1)
@@ -99,6 +108,7 @@ Public Class Project
     Public SourceWidth As Integer = 1920
     Public SubtitleMode As SubtitleMode
     Public SubtitleName As String = ""
+    Public TargetFrames As Integer
     Public TargetFrameRate As Double
     Public TargetHeight As Integer = 1080
     Public TargetSeconds As Integer = 5400
@@ -139,19 +149,11 @@ Public Class Project
         If TargetFile Is Nothing Then TargetFile = ""
 
         If Check(PreferredSubtitles, "Automatically Included Subtitles", 2) Then
-            If Language.CurrentCulture.TwoLetterCode = "en" Then
-                PreferredSubtitles = "eng und"
-            Else
-                PreferredSubtitles = Language.CurrentCulture.ThreeLetterCode + " eng und"
-            End If
+            PreferredSubtitles = If(Language.CurrentCulture.TwoLetterCode = "en", "eng und", Language.CurrentCulture.ThreeLetterCode + " eng und")
         End If
 
         If Check(PreferredAudio, "Preferred Audio Languages", 1) Then
-            If Language.CurrentCulture.TwoLetterCode = "en" Then
-                PreferredAudio = "eng und"
-            Else
-                PreferredAudio = Language.CurrentCulture.ThreeLetterCode + " eng und"
-            End If
+            PreferredAudio = If(Language.CurrentCulture.TwoLetterCode = "en", "eng und", Language.CurrentCulture.ThreeLetterCode + " eng und")
         End If
 
         If SourceScript Is Nothing Then SourceScript = New SourceVideoScript
@@ -175,7 +177,7 @@ Public Class Project
             }
         End If
 
-        If Check(Script, "Filter Setup", 50) Then Script = StaxRip.VideoScript.GetDefaults()(0)
+        If Check(Script, "Filter Setup", 50) Then Script = VideoScript.GetDefaults()(0)
 
         Migrate()
     End Sub
@@ -323,7 +325,7 @@ Public Class Project
 
     ReadOnly Property IsSubtitleDemuxingRequired As Boolean
         Get
-            Return SubtitleMode = SubtitleMode.Dialog OrElse SubtitleMode = SubtitleMode.Preferred OrElse SubtitleMode = SubtitleMode.PreferredNoMux
+            Return SubtitleMode = SubtitleMode.All OrElse SubtitleMode = SubtitleMode.Dialog OrElse SubtitleMode = SubtitleMode.Preferred OrElse SubtitleMode = SubtitleMode.PreferredNoMux
         End Get
     End Property
 End Class

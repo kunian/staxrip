@@ -14,7 +14,7 @@ Imports StaxRip.UI
 Public Class GlobalCommands
     <Command("Checks if an update is available.")>
     Sub CheckForUpdate()
-        StaxRipUpdate.CheckForUpdate(True, s.CheckForUpdatesDev, Environment.Is64BitProcess)
+        StaxRipUpdate.CheckForUpdateAsync(True, Environment.Is64BitProcess)
     End Sub
 
     <Command("Shows the log file with the built-in log file viewer.")>
@@ -86,7 +86,7 @@ Public Class GlobalCommands
                     proj.TargetFile = sourceFile.Edit.Text
                     proj.TempDir = outputFolder.Edit.Text.FixDir
 
-                    If Not td.Show Is Nothing Then
+                    If td.Show IsNot Nothing Then
                         td.SelectedValue.Run(proj)
                         s.LastSourceDir = proj.SourceFile.Dir
                         proj.Log.Save(proj)
@@ -102,6 +102,7 @@ Public Class GlobalCommands
     End Sub
 
     <Command("Placeholder for dynamically updated menu items.")>
+    <CodeAnalysis.SuppressMessage("Style", "IDE0060:Remove unused parameter", Justification:="<Pending>")>
     Sub DynamicMenuItem(<DispName("ID")> id As DynamicMenuItemID)
     End Sub
 
@@ -198,6 +199,34 @@ Public Class GlobalCommands
         g.InvokePowerShellCode(Macro.Expand(filepath).ReadAllText, Macro.Expand(args).SplitNoEmpty(";"c))
     End Sub
 
+    <Command("Sets crop values")>
+    Sub SetCrop(
+        <DispName("Left Crop")>
+        <Description("Sets the left crop value.")>
+        <DefaultValue(0)>
+        left As Integer,
+        <DispName("Top Crop")>
+        <Description("Sets the top crop value.")>
+        <DefaultValue(0)>
+        top As Integer,
+        <DispName("Right Crop")>
+        <Description("Sets the right crop value.")>
+        <DefaultValue(0)>
+        right As Integer,
+        <DispName("Bottom Crop")>
+        <Description("Sets the bottom crop value.")>
+        <DefaultValue(0)>
+        bottom As Integer)
+
+        p.CropLeft = Math.Max(left, 0)
+        p.CropTop = Math.Max(top, 0)
+        p.CropRight = Math.Max(right, 0)
+        p.CropBottom = Math.Max(bottom, 0)
+
+        g.MainForm.SetCropFilter()
+        g.CorrectCropMod()
+    End Sub
+
     <Command("Generates various wiki content.")>
     Sub GenerateWikiContent()
         Documentation.GenerateWikiContent()
@@ -269,11 +298,11 @@ Public Class GlobalCommands
         End Try
     End Sub
 
-    Function GetApplicationDetails(Optional includeName As Boolean = True, Optional includeVersion As Boolean = True, Optional includeReleaseType As Boolean = True) As String
+    Function GetApplicationDetails(Optional includeName As Boolean = True, Optional includeVersion As Boolean = True, Optional includeReleaseType As Boolean = False) As String
         Dim sb = New StringBuilder()
         Dim version = Assembly.GetExecutingAssembly.GetName.Version
 
-        If includeName Then sb.Append(" StaxRip")
+        If includeName Then sb.Append(Application.ProductName)
         If includeVersion Then
             sb.Append($" v{version.Major}.{version.Minor}")
 
@@ -300,8 +329,14 @@ Public Class GlobalCommands
         Select Case topic
             Case "info"
                 form.Doc.WriteStart(GetApplicationDetails())
-                form.Doc.Write("Active Authors", "Dendraspis, Patman, DJATOM")
-                form.Doc.Write("Retired Authors", "stax76, JKyle, 44vince44, Revan654, NikosD, jernst, Brother John, Freepik, ilko-k, nulledone, vanontom")
+                form.Doc.Write("Active Authors", "Dendraspis")
+                form.Doc.Write("Active Contributors", "Patman86")
+                form.Doc.Write("Retired Authors", "stax76, JKyle, 44vince44, DJATOM, Revan654, NikosD, jernst, Brother John, Freepik, ilko-k, nulledone, vanontom")
+                form.Doc.Writer.WriteRaw("<hr>")
+                form.Doc.Write("Links", "<a href=""https://github.com/staxrip/staxrip"">Source on GitHub</a>" &
+                                         "<br><a href=""https://github.com/staxrip/staxrip/blob/master/Changelog.md"">Changelog on GitHub</a>" &
+                                         "<br><a href=""https://github.com/staxrip/staxrip/wiki"">Wiki on GitHub</a>" &
+                                         "<br><a href=""https://discord.gg/uz8pVR79Bd"">StaxRip Community on Discord</a>")
                 form.Doc.Writer.WriteRaw("<hr>")
 
                 Dim licensePath = Folder.Startup + "License.txt"
@@ -328,7 +363,7 @@ Public Class GlobalCommands
         <Editor(GetType(MacroStringTypeEditor), GetType(UITypeEditor))>
         Optional content As String = Nothing,
         <DispName("Icon")>
-        <DefaultValue(GetType(MsgIcon), "Info")>
+        <DefaultValue(GetType(TaskIcon), "Info")>
         Optional icon As TaskIcon = TaskIcon.Info)
 
         Msg(Macro.Expand(mainInstruction), Macro.Expand(content), icon, TaskButton.OK)
@@ -469,6 +504,11 @@ Public Class GlobalCommands
     <Command("Loads a source file.")>
     Sub LoadSourceFile(<DispName("Source File Path")> path As String)
         g.MainForm.OpenVideoSourceFile(path)
+    End Sub
+
+    <Command("Loads multiple source files.")>
+    Sub LoadSourceFiles(<DispName("Source File Paths")> paths As String)
+        g.MainForm.OpenVideoSourceFiles(paths.Split({";"}, StringSplitOptions.RemoveEmptyEntries))
     End Sub
 
     <Command("Shows an Open File dialog to open a file to be shown by the console tool mkvinfo.")>
@@ -764,7 +804,7 @@ Public Class GlobalCommands
                             "The thumbnail sheets are generated in the background. Do you want to get informed when all thumbnail sheets are processed?")
                         reportTD.AddButton(DialogResult.Yes)
                         reportTD.AddButton(DialogResult.No)
-                        reportWhenFinished = reportTD.Show() = DialogResult.Yes
+                        reportWhenFinished = reportTD.ShowDialog() = DialogResult.Yes
                     End Using
 
                     If reportWhenFinished Then
@@ -776,11 +816,11 @@ Public Class GlobalCommands
                         Dim proceededSucceededSources = proceededSources.Where(Function(x) x.Value)
                         Dim attention = proceededFailedSources.Any()
                         Using summaryTD
-                            summaryTD = New TaskDialog(Of DialogResult)
+                            summaryTD = New TaskDialog(Of DialogResult)()
                             summaryTD.Icon = If(attention, TaskIcon.Warning, TaskIcon.Info)
                             summaryTD.Title = If(proceededSources.Count = 1,
-                                                If(attention, "Thumbnail sheet creation failed!", "Thumbnail sheet has been created"),
-                                                If(attention, If(proceededSucceededSources.Any(), "Some thumbnail sheet creation failed!", "All thumbnail sheet creation failed!"), "All thumbnail sheets have been created"))
+                                                If(attention, "Thumbnail sheet creation failed!", "Thumbnail sheet has been created."),
+                                                If(attention, If(proceededSucceededSources.Any(), "Some thumbnail sheet creation failed!", "All thumbnail sheet creation failed!"), "All thumbnail sheets have been created."))
 
                             For i = 0 To proceededSources.Count - 1
                                 Dim key = proceededSources.ElementAtOrDefault(i).Key
@@ -795,7 +835,7 @@ Public Class GlobalCommands
 
                             summaryTD.ExpandedContent += $"Duration: {sw.ElapsedMilliseconds} ms"
                             summaryTD.AddButton(DialogResult.OK)
-                            summaryTD.Show()
+                            summaryTD.ShowDialog()
                         End Using
                     End If
                 End If

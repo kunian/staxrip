@@ -19,7 +19,11 @@ Public Class DirectFrameServer
         End If
 
         NativeServer.OpenFile(path)
-        Info = Marshal.PtrToStructure(Of ServerInfo)(NativeServer.GetInfo())
+
+        Dim infoPtr = NativeServer.GetInfo()
+        If infoPtr <> IntPtr.Zero Then
+            Info = Marshal.PtrToStructure(Of ServerInfo)(infoPtr)
+        End If
     End Sub
 
     ReadOnly Property [Error] As String Implements IFrameServer.Error
@@ -28,17 +32,13 @@ Public Class DirectFrameServer
         End Get
     End Property
 
-    ReadOnly Property FrameRate As Double Implements IFrameServer.FrameRate
+    ReadOnly Property FrameRate As Decimal Implements IFrameServer.FrameRate
         Get
-            Return Info.FrameRateNum / Info.FrameRateDen
+            Return Decimal.Divide(Info.FrameRateNum, Info.FrameRateDen)
         End Get
     End Property
 
-    Function GetFrame(
-        position As Integer,
-        ByRef data As IntPtr,
-        ByRef pitch As Integer) As Integer Implements IFrameServer.GetFrame
-
+    Function GetFrame(position As Integer, ByRef data As IntPtr, ByRef pitch As Integer) As Integer Implements IFrameServer.GetFrame
         Return NativeServer.GetFrame(position, data, pitch)
     End Function
 
@@ -63,7 +63,7 @@ Public Interface IFrameServer
 
     Property Info As ServerInfo
     ReadOnly Property [Error] As String
-    ReadOnly Property FrameRate As Double
+    ReadOnly Property FrameRate As Decimal
     Function GetFrame(position As Integer, ByRef data As IntPtr, ByRef pitch As Integer) As Integer
 End Interface
 
@@ -83,19 +83,16 @@ Public Structure ServerInfo
     Public FrameRateDen As Integer
     Public FrameCount As Integer
     Public ColorSpace As ColorSpace
+    Public BitsPerPixel As Integer
 
-    ReadOnly Property FrameRate As Double
+    ReadOnly Property FrameRate As Decimal
         Get
-            If FrameRateDen <> 0 Then
-                Return FrameRateNum / FrameRateDen
-            End If
+            Return If(FrameRateDen <> 0, Decimal.Divide(FrameRateNum, FrameRateDen), 0)
         End Get
     End Property
 
     Function GetInfoText(position As Integer) As String
-        If FrameRateDen = 0 Then
-            Return ""
-        End If
+        If FrameRateDen = 0 Then Return ""
 
         Dim lengthtDate = Date.Today.AddSeconds(FrameCount / FrameRate)
         Dim dateFormat = If(lengthtDate.Hour = 0, "mm:ss.fff", "HH:mm:ss.fff")
@@ -228,6 +225,7 @@ Public Class VfwFrameServer
             info2.FrameRateNum = CInt(aviInfo.dwRate)
             info2.Width = aviInfo.rcFrame.Right
             info2.Height = aviInfo.rcFrame.Bottom
+
             info2.ColorSpace = GetColorSpace(aviInfo.fccHandler)
             Info = info2
         Catch ex As Exception
@@ -238,9 +236,9 @@ Public Class VfwFrameServer
 
     ReadOnly Property [Error] As String Implements IFrameServer.Error
 
-    ReadOnly Property FrameRate As Double Implements IFrameServer.FrameRate
+    ReadOnly Property FrameRate As Decimal Implements IFrameServer.FrameRate
         Get
-            Return Info.FrameRateNum / Info.FrameRateDen
+            Return Decimal.Divide(Info.FrameRateNum, Info.FrameRateDen)
         End Get
     End Property
 

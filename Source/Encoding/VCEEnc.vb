@@ -1,4 +1,6 @@
 ﻿
+Imports System.Xml.Serialization
+Imports StaxRip.UI
 Imports StaxRip.VideoEncoderCommandLine
 
 <Serializable()>
@@ -9,7 +11,7 @@ Public Class VCEEnc
 
     Public Overrides ReadOnly Property DefaultName As String
         Get
-            Return "AMD | " + Params.Codec.OptionText.Replace("AMD ", "")
+            Return "VCEEncC (AMD) | " + Params.Codec.OptionText.Replace("AMD ", "")
         End Get
     End Property
 
@@ -48,7 +50,7 @@ Public Class VCEEnc
         Params.Codec.Value = If(codecIndex > 0 AndAlso codecIndex < Params.Codec.Values.Length, codecIndex, 0)
     End Sub
 
-    Overrides Sub ShowConfigDialog()
+    Overrides Sub ShowConfigDialog(Optional path As String = Nothing)
         Dim params1 As New EncoderParams
         Dim store = ObjectHelp.GetCopy(ParamsStore)
         params1.Init(store)
@@ -64,10 +66,14 @@ Public Class VCEEnc
                         SaveProfile(enc)
                     End Sub
 
-            form.cms.Add("Check Hardware", Sub() g.ShowCode("Check Hardware", ProcessHelp.GetConsoleOutput(Package.VCEEnc.Path, "--check-hw")))
-            form.cms.Add("Check Features", Sub() g.ShowCode("Check Features", ProcessHelp.GetConsoleOutput(Package.VCEEnc.Path, "--check-features")), Keys.Control Or Keys.F)
+            form.cms.Add("Check Hardware", Sub() g.ShowCode("Check Hardware", ProcessHelp.GetConsoleOutput(Package.VCEEncC.Path, "--check-hw")))
+            form.cms.Add("Check Features", Sub() g.ShowCode("Check Features", ProcessHelp.GetConsoleOutput(Package.VCEEncC.Path, "--check-features")), Keys.Control Or Keys.F)
             form.cms.Add("-")
             form.cms.Add("Save Profile...", a, Keys.Control Or Keys.S, Symbol.Save)
+
+            If Not String.IsNullOrWhiteSpace(path) Then
+                form.SimpleUI.ShowPage(path)
+            End If
 
             If form.ShowDialog() = DialogResult.OK Then
                 Params = params1
@@ -88,20 +94,19 @@ Public Class VCEEnc
 
         Using proc As New Proc
             proc.Header = "Video encoding"
-            proc.Package = Package.VCEEnc
+            proc.Package = Package.VCEEncC
             proc.SkipStrings = {"%]", " frames: "}
             proc.File = "cmd.exe"
             proc.Arguments = "/S /C """ + Params.GetCommandLine(True, True) + """"
             proc.Start()
         End Using
-
-        AfterEncoding()
     End Sub
 
     Overrides Function GetMenu() As MenuList
-        Dim ret As New MenuList
-        ret.Add("Encoder Options", AddressOf ShowConfigDialog)
-        ret.Add("Container Configuration", AddressOf OpenMuxerConfigDialog)
+        Dim ret As New MenuList From {
+            {"Encoder Options", AddressOf ShowConfigDialog},
+            {"Container Configuration", AddressOf OpenMuxerConfigDialog}
+        }
         Return ret
     End Function
 
@@ -123,7 +128,7 @@ Public Class VCEEnc
         Dim tester As New ConsolAppTester
 
         tester.IgnoredSwitches = "audio-bitrate audio-codec video-streamid video-track vpy vpy-mt
-            audio-filter avsw device input-analyze caption2ass audio-file sub-copy version audio-copy
+            audio-filter avsw device input-analyze audio-file sub-copy version audio-copy
             audio-ignore-decode-error audio-ignore-notrack-error audio-resampler raw help input-file
             audio-samplerate audio-source audio-stream avs avvce-analyze output-file seek skip-frame
             check-avversion check-codecs check-decoders check-encoders check-filters check-protocols
@@ -131,8 +136,8 @@ Public Class VCEEnc
             vpp-delogo vpp-delogo-cb vpp-delogo-cr vpp-delogo-depth output
             vpp-delogo-pos vpp-delogo-select vpp-delogo-y"
 
-        tester.Package = Package.VCEEnc
-        tester.CodeFile = Folder.Startup.Parent + "Encoding\vceenc.vb"
+        tester.Package = Package.VCEEncC
+        tester.CodeFile = Path.Combine(Folder.Startup.Parent, "Encoding", "vceenc.vb")
 
         Return tester.Test
     End Function
@@ -141,19 +146,19 @@ Public Class VCEEnc
         Inherits CommandLineParams
 
         Sub New()
-            Title = "VCEEnc Options"
+            Title = "VCEEncC Options"
         End Sub
 
         Property Codec As New OptionParam With {
             .Switch = "--codec",
             .Text = "Codec",
-            .Options = {"AMD H.264", "AMD H.265"},
-            .Values = {"h264", "hevc"}}
+            .Options = {"H.264", "H.265", "AV1"},
+            .Values = {"h264", "hevc", "av1"}}
 
         Property Mode264 As New OptionParam With {
             .Name = "Mode",
             .Text = "Mode",
-            .Options = {"CQP - Constant QP", "CBR - Constant Bitrate", "VBR - Variable Bitrate", "QVBR - Quality-Defined Variable Bitrate"},
+            .Options = {"CQP - Constant QP", "CBR - Constant Bitrate", "CBRHQ - High Quality Constant Bitrate", "VBR - Variable Bitrate", "VBRHQ - High Quality Variable Bitrate", "QVBR - Quality-Defined Variable Bitrate"},
             .VisibleFunc = Function() Codec.Value = 0}
 
         Property Mode265 As New OptionParam With {
@@ -162,6 +167,12 @@ Public Class VCEEnc
             .Options = {"CQP - Constant QP", "CBR - Constant Bitrate", "VBR - Variable Bitrate"},
             .VisibleFunc = Function() Codec.Value = 1}
 
+        Property ModeAV1 As New OptionParam With {
+            .Name = "Mode",
+            .Text = "Mode",
+            .Options = {"CQP - Constant QP", "CBR - Constant Bitrate", "CBRHQ - High Quality Constant Bitrate", "VBR - Variable Bitrate", "VBRHQ - High Quality Variable Bitrate", "QVBR - Quality-Defined Variable Bitrate"},
+            .VisibleFunc = Function() Codec.Value = 2}
+
         ReadOnly Property Mode As OptionParam
             Get
                 Select Case Codec.Value
@@ -169,6 +180,8 @@ Public Class VCEEnc
                         Return Mode264
                     Case 1
                         Return Mode265
+                    Case 2
+                        Return ModeAV1
                     Case Else
                         Throw New ArgumentException("Invalid Codec Value!")
                 End Select
@@ -190,35 +203,58 @@ Public Class VCEEnc
         Property QvbrQuality As New NumParam With {
             .Switch = "--qvbr-quality",
             .Text = "QVBR Quality",
-            .Init = 23,
-            .VisibleFunc = Function() Mode.Value = 3,
+            .Init = 28,
+            .VisibleFunc = Function() Mode.Value = 5,
             .Config = {0, 51, 1}}
+
+        Property QPAdvanced As New BoolParam With {
+            .Text = "Show advanced QP settings",
+            .VisibleFunc = Function() Mode.Value = 0}
+
+        Property QP As New NumParam With {
+            .HelpSwitch = "--cqp",
+            .Text = "QP",
+            .Init = 18,
+            .VisibleFunc = Function() Mode.Value = 0 AndAlso Not QPAdvanced.Value,
+            .Config = {0, 51}}
 
         Property QPI As New NumParam With {
             .Text = "QP I",
-            .Value = 22,
-            .VisibleFunc = Function() Mode.Value = 0,
+            .Value = 18,
+            .VisibleFunc = Function() Mode.Value = 0 AndAlso QPAdvanced.Value,
             .Config = {0, 51}}
 
         Property QPP As New NumParam With {
             .Text = "QP P",
-            .Value = 24,
-            .VisibleFunc = Function() Mode.Value = 0,
+            .Value = 20,
+            .VisibleFunc = Function() Mode.Value = 0 AndAlso QPAdvanced.Value,
             .Config = {0, 51}}
 
         Property QPB As New NumParam With {
             .Text = "QP B",
-            .Value = 27,
-            .VisibleFunc = Function() Mode.Value = 0,
+            .Value = 24,
+            .VisibleFunc = Function() Mode.Value = 0 AndAlso QPAdvanced.Value,
             .Config = {0, 51}}
 
+        Property Tiles As New NumParam With {.Switch = "--tiles", .Text = "Tiles", .Value = 1, .Config = {0, 64}, .VisibleFunc = Function() Codec.Value = 2}
+        Property CdefMode As New OptionParam With {.Switch = "--cdef-mode", .Text = "CDEF Mode", .Init = 0, .Options = {"Off", "On"}, .Values = {"off", "on"}, .VisibleFunc = Function() Codec.Value = 2}
+        Property CdfUpdate As New BoolParam With {.Switch = "--cdf-update", .Text = "CDF Update", .Init = False, .VisibleFunc = Function() Codec.Value = 2}
+        Property CdfFrameEndUpdate As New BoolParam With {.Switch = "--cdf-frame-end-update", .Text = "CDF Frame End Update", .Init = False, .VisibleFunc = Function() Codec.Value = 2}
+        Property TemporalLayers As New NumParam With {.Switch = "--temporal-layers", .Text = "Temporal Layers", .Value = 0, .Config = {0, 1000}, .VisibleFunc = Function() Codec.Value = 2}
+        Property AqMode As New OptionParam With {.Switch = "--aq-mode", .Text = "AQ Mode", .Init = 0, .Options = {"None", "CAQ"}, .Values = {"none", "caq"}, .VisibleFunc = Function() Codec.Value = 2}
+
         Property Pa As New BoolParam With {.Switch = "--pa", .Text = "Pre-Analysis to enhance quality", .ArgsFunc = AddressOf GetPaArgs}
-        Property PaSc As New OptionParam With {.Text = "      Sensitivity of scene change detection", .HelpSwitch = "--pa-sc", .Init = 2, .Options = {"None", "Low", "Medium", "High"}}
-        Property PaSs As New OptionParam With {.Text = "      Sensitivity of static scene detection", .HelpSwitch = "--pa-ss", .Init = 2, .Options = {"None", "Low", "Medium", "High"}}
-        Property PaActivityType As New OptionParam With {.Text = "      Block activity calcualtion mode", .HelpSwitch = "--pa-activity-type", .Init = 0, .Options = {"Y", "YUV"}}
-        Property PaCaqStrength As New OptionParam With {.Text = "      Content Adaptive Quantization (CAQ) strength", .HelpSwitch = "--pa-caq-strength", .Init = 1, .Options = {"Low", "Medium", "High"}}
-        Property PaInitqpsc As New NumParam With {.Text = "      Initial qp after scene change", .HelpSwitch = "--pa-initqpsc", .Init = -1.0, .Config = {-1.0, 100.0, 1, 0}}
-        Property PaFskipMaxqp As New NumParam With {.Text = "      Threshold to insert skip frame on static scene", .HelpSwitch = "--pa-fskip-maxqp", .Init = 35.0, .Config = {0.0, 100.0, 1, 0}}
+        Property PaSc As New OptionParam With {.Text = "      Sensitivity of scene change detection", .HelpSwitch = "--pa", .Init = 2, .Options = {"None", "Low", "Medium", "High"}}
+        Property PaSs As New OptionParam With {.Text = "      Sensitivity of static scene detection", .HelpSwitch = "--pa", .Init = 3, .Options = {"None", "Low", "Medium", "High"}}
+        Property PaActivityType As New OptionParam With {.Text = "      Block activity calcualtion mode", .HelpSwitch = "--pa", .Init = 0, .Options = {"Y", "YUV"}}
+        Property PaCaqStrength As New OptionParam With {.Text = "      Content Adaptive Quantization (CAQ) strength", .HelpSwitch = "--pa", .Init = 1, .Options = {"Low", "Medium", "High"}}
+        Property PaInitqpsc As New NumParam With {.Text = "      Initial qp after scene change", .HelpSwitch = "--pa", .Init = -1.0, .Config = {-1.0, 100.0, 1, 0}}
+        Property PaFskipMaxqp As New NumParam With {.Text = "      Threshold to insert skip frame on static scene", .HelpSwitch = "--pa", .Init = 35.0, .Config = {0.0, 100.0, 1, 0}}
+        Property PaLookahead As New NumParam With {.Text = "      Lookahead buffer size", .HelpSwitch = "--pa", .Init = 0, .Config = {0.0, 100.0, 1, 0}}
+        Property PaLtr As New OptionParam With {.Text = "      Enable automatic LTR frame management", .HelpSwitch = "--pa", .IntegerValue = False, .Init = 0, .Options = {"False", "True"}, .Values = {"false", "true"}}
+        Property PaPaq As New OptionParam With {.Text = "      Perceptual AQ mode", .HelpSwitch = "--pa", .IntegerValue = False, .Init = 0, .Options = {"None", "CAQ"}, .Values = {"none", "caq"}}
+        Property PaTaq As New OptionParam With {.Text = "      Temporal AQ mode", .HelpSwitch = "--pa", .IntegerValue = True, .Init = 0, .Options = {"0", "1", "2"}}
+        Property PaMotionQuality As New OptionParam With {.Text = "      High motion quality boost mode", .HelpSwitch = "--pa", .IntegerValue = False, .Init = 0, .Options = {"None", "Auto"}, .Values = {"none", "auto"}}
 
 
         Property Tweak As New BoolParam With {.Switch = "--vpp-tweak", .Text = "Tweaking", .ArgsFunc = AddressOf GetTweakArgs}
@@ -227,6 +263,7 @@ Public Class VCEEnc
         Property TweakSaturation As New NumParam With {.Text = "      Saturation", .HelpSwitch = "--vpp-tweak", .Init = 1.0, .Config = {0.0, 3.0, 0.1, 1}}
         Property TweakHue As New NumParam With {.Text = "      Hue", .HelpSwitch = "--vpp-tweak", .Config = {-180.0, 180.0, 0.1, 1}}
         Property TweakBrightness As New NumParam With {.Text = "      Brightness", .HelpSwitch = "--vpp-tweak", .Config = {-1.0, 1.0, 0.1, 1}}
+        Property TweakSwapuv As New OptionParam With {.Text = "      Swapuv", .HelpSwitch = "--vpp-tweak", .IntegerValue = False, .Init = 0, .Options = {"False", "True"}, .Values = {"false", "true"}}
 
         Property Pad As New BoolParam With {.Switch = "--vpp-pad", .Text = "Padding", .ArgsFunc = AddressOf GetPaddingArgs}
         Property PadLeft As New NumParam With {.Text = "      Left"}
@@ -283,7 +320,7 @@ Public Class VCEEnc
         Property DebandBlurfirst As New BoolParam With {.Text = "Blurfirst", .HelpSwitch = "--vpp-deband", .LeftMargin = g.MainForm.FontHeight * 1.3}
         Property DebandRandEachFrame As New BoolParam With {.Text = "Rand Each Frame", .HelpSwitch = "--vpp-deband", .LeftMargin = g.MainForm.FontHeight * 1.3}
 
-        Property Deinterlacer As New OptionParam With {.Text = "Deinterlacing Method", .HelpSwitch = "", .Init = 0, .Options = {"None", "AFS (Activate Auto Field Shift)", "Nnedi"}, .ArgsFunc = AddressOf GetDeinterlacerArgs}
+        Property Deinterlacer As New OptionParam With {.Text = "Deinterlacing Method", .HelpSwitch = "", .Init = 0, .Options = {"None", "AFS (Activate Auto Field Shift)", "Nnedi", "Yadif"}, .ArgsFunc = AddressOf GetDeinterlacerArgs}
 
         Property AfsPreset As New OptionParam With {.Text = "Preset", .HelpSwitch = "--vpp-afs", .Options = {"Default", "Triple", "Double", "Anime", "Cinema", "Min_afterimg", "24fps", "24fps_sd", "30fps"}, .VisibleFunc = Function() Deinterlacer.Value = 1}
         Property AfsINI As New StringParam With {.Text = "INI", .HelpSwitch = "--vpp-afs", .BrowseFile = True, .VisibleFunc = Function() Deinterlacer.Value = 1}
@@ -316,11 +353,16 @@ Public Class VCEEnc
         Property NnediPrec As New OptionParam With {.Text = "Prec", .HelpSwitch = "--vpp-nnedi", .Options = {"auto", "fp16", "fp32"}, .VisibleFunc = Function() Deinterlacer.Value = 2}
         Property NnediWeightfile As New StringParam With {.Text = "Weight File", .HelpSwitch = "--vpp-nnedi", .BrowseFile = True, .VisibleFunc = Function() Deinterlacer.Value = 2}
 
+        Property Yadif As New OptionParam With {.Text = "Yadif Mode", .HelpSwitch = "--vpp-yadif", .AlwaysOn = True, .Options = {"Auto", "TFF", "BFF", "Bob", "Bob TFF", "Bob BFF"}, .Values = {"", "tff", "bff", "bob", "bob_tff", "bob_bff"}, .VisibleFunc = Function() Deinterlacer.Value = 3}
+
         Property Edgelevel As New BoolParam With {.Text = "Edgelevel filter to enhance edge", .Switches = {"--vpp-edgelevel"}, .ArgsFunc = AddressOf GetEdge}
         Property EdgelevelStrength As New NumParam With {.Text = "     Strength", .HelpSwitch = "--vpp-edgelevel", .Config = {0, 31, 1, 1}}
         Property EdgelevelThreshold As New NumParam With {.Text = "     Threshold", .HelpSwitch = "--vpp-edgelevel", .Init = 20, .Config = {0, 255, 1, 1}}
         Property EdgelevelBlack As New NumParam With {.Text = "     Black", .HelpSwitch = "--vpp-edgelevel", .Config = {0, 31, 1, 1}}
         Property EdgelevelWhite As New NumParam With {.Text = "     White", .HelpSwitch = "--vpp-edgelevel", .Config = {0, 31, 1, 1}}
+
+        Property VppResize As New OptionParam With {.Text = "Resize", .Switch = "--vpp-resize", .Options = {"Disabled", "advanced", "bilinear", "spline16", "spline36", "spline64", "lanczos2", "lanczos3", "lanczos4", "amf_bilinear", "amf_bicubic", "amf_fsr"}}
+        Property VppScalerSharpness As New NumParam With {.Text = "Scaler Sharpness", .Switch = "--vpp-scaler-sharpness", .Config = {0, 2, 0.1, 2}, .Init = 0.5, .VisibleFunc = Function() VppResize.ValueText = "amf_fsr"}
 
         Property Unsharp As New BoolParam With {.Text = "Unsharp Filter", .Switches = {"--vpp-unsharp"}, .ArgsFunc = AddressOf GetUnsharp}
         Property UnsharpRadius As New NumParam With {.Text = "     Radius", .HelpSwitch = "--vpp-unsharp", .Init = 3, .Config = {1, 9}}
@@ -351,7 +393,7 @@ Public Class VCEEnc
                 If ItemsValue Is Nothing Then
                     ItemsValue = New List(Of CommandLineParam)
 
-                    Add("Basic", Decoder, Codec, Mode264, Mode265,
+                    Add("Basic", Decoder, Codec, Mode264, Mode265, ModeAV1,
                         New OptionParam With {.Switch = "--output-depth", .Text = "Depth", .Options = {"8-Bit", "10-Bit"}, .Values = {"8", "10"}},
                         New OptionParam With {.Switch = "--quality", .Text = "Preset", .Options = {"Fast", "Balanced", "Slow"}, .Init = 1},
                         New OptionParam With {.Switch = "--profile", .Name = "profile264", .VisibleFunc = Function() Codec.ValueText = "h264", .Text = "Profile", .Options = {"Automatic", "Baseline", "Main", "High"}},
@@ -359,7 +401,7 @@ Public Class VCEEnc
                         New OptionParam With {.Switch = "--level", .Name = "LevelH264", .Text = "Level", .VisibleFunc = Function() Codec.ValueText = "h264", .Options = {"Unrestricted", "1", "1.1", "1.2", "1.3", "2", "2.1", "2.2", "3", "3.1", "3.2", "4", "4.1", "4.2", "5", "5.1", "5.2"}},
                         New OptionParam With {.Switch = "--level", .Name = "LevelH265", .Text = "Level", .VisibleFunc = Function() Codec.ValueText = "hevc", .Options = {"Unrestricted", "1", "2", "2.1", "3", "3.1", "4", "4.1", "5", "5.1", "5.2", "6", "6.1", "6.2"}},
                         New OptionParam With {.Switch = "--tier", .Text = "Tier", .Options = {"Main", "High"}, .VisibleFunc = Function() Codec.ValueText = "hevc"},
-                        QPI, QPP, QPB, Bitrate, QvbrQuality)
+                        QPAdvanced, QP, QPI, QPP, QPB, Bitrate, QvbrQuality)
                     Add("Slice Decision",
                         New NumParam With {.Switch = "--slices", .Text = "Slices", .Init = 1},
                         New NumParam With {.Switch = "--bframes", .Text = "B-Frames", .Config = {0, 16}},
@@ -376,19 +418,22 @@ Public Class VCEEnc
                         New NumParam With {.Switch = "--bref-deltaqp", .Text = "Ref Bframe QP Offset"})
                     Add("Pre...",
                         New BoolParam With {.Switch = "--pe", .Text = "Pre-Encode assisted rate control"},
-                        Pa, PaSc, PaSs, PaActivityType, PaCaqStrength, PaInitqpsc, PaFskipMaxqp)
+                        Pa, PaSc, PaSs, PaActivityType, PaCaqStrength, PaInitqpsc, PaFskipMaxqp, PaLookahead, PaLtr, PaPaq, PaTaq, PaMotionQuality)
+                    Add("AV1 Specific",
+                        Tiles, TemporalLayers, AqMode, CdefMode, CdfUpdate, CdfFrameEndUpdate)
                     Add("VPP | Misc",
                         New StringParam With {.Switch = "--vpp-subburn", .Text = "Subburn"},
-                        New OptionParam With {.Switch = "--vpp-resize", .Text = "Resize", .Options = {"Disabled", "Default", "Bilinear", "Cubic", "Cubic_B05C03", "Cubic_bSpline", "Cubic_Catmull", "Lanczos", "NN", "NPP_Linear", "Spline 36", "Super"}},
-                        New OptionParam With {.Switch = "--vpp-rotate", .Text = "Rotate", .Options = {"Disabled", "90", "180", "270"}})
+                        New OptionParam With {.Switch = "--vpp-rotate", .Text = "Rotate", .Options = {"Disabled", "90", "180", "270"}},
+                        VppResize, VppScalerSharpness)
                     Add("VPP | Misc 2",
-                        Tweak, TweakBrightness, TweakContrast, TweakSaturation, TweakGamma, TweakHue,
+                        Tweak, TweakBrightness, TweakContrast, TweakSaturation, TweakGamma, TweakHue, TweakSwapuv,
                         Pad, PadLeft, PadTop, PadRight, PadBottom,
                         Smooth, SmoothQuality, SmoothQP, SmoothPrec)
                     Add("VPP | Misc 3",
                         TransformFlipX, TransformFlipY, TransformTranspose,
                         New StringParam With {.Switch = "--vpp-decimate", .Text = "Decimate"},
-                        New StringParam With {.Switch = "--vpp-mpdecimate", .Text = "MP Decimate"})
+                        New StringParam With {.Switch = "--vpp-mpdecimate", .Text = "MP Decimate"},
+                        New BoolParam With {.Switch = "--vpp-rff", .Text = "RFF", .Init = True})
                     Add("VPP | Colorspace",
                         Colorspace,
                         ColorspaceMatrixFrom, ColorspaceMatrixTo,
@@ -405,6 +450,7 @@ Public Class VCEEnc
                         DebandDither, DebandDitherY, DebandDitherC, DebandSeed, DebandBlurfirst, DebandRandEachFrame)
                     Add("VPP | Deinterlace",
                         Deinterlacer,
+                        Yadif,
                         NnediField, NnediNns, NnediNsize, NnediQuality, NnediPrescreen, NnediErrortype, NnediPrec, NnediWeightfile,
                         AfsINI, AfsPreset, AfsLeft, AfsRight, AfsTop, AfsBottom, AfsMethodSwitch, AfsCoeffShift, AfsThreShift, AfsThreDeint, AfsThreMotionY, AfsThreMotionC, AfsLevel)
                     Add("VPP | Deinterlace | AFS 2",
@@ -417,6 +463,7 @@ Public Class VCEEnc
                         Unsharp, UnsharpRadius, UnsharpWeight, UnsharpThreshold,
                         Warpsharp, WarpsharpThreshold, WarpsharpBlur, WarpsharpType, WarpsharpDepth, WarpsharpChroma)
                     Add("VUI",
+                        New StringParam With {.Switch = "--dhdr10-info", .Text = "HDR10 Info File", .BrowseFile = True, .VisibleFunc = Function() Codec.Value = 1 OrElse Codec.Value = 2},
                         New StringParam With {.Switch = "--sar", .Text = "Sample Aspect Ratio", .Init = "auto", .Menu = s.ParMenu, .ArgsFunc = AddressOf GetSAR},
                         New OptionParam With {.Switch = "--videoformat", .Text = "Videoformat", .Options = {"Undefined", "NTSC", "Component", "PAL", "SECAM", "MAC"}},
                         New OptionParam With {.Switch = "--colormatrix", .Text = "Colormatrix", .Options = {"Undefined", "BT 2020 C", "BT 2020 NC", "BT 470 BG", "BT 709", "FCC", "GBR", "SMPTE 170 M", "SMPTE 240 M", "YCgCo"}},
@@ -436,6 +483,7 @@ Public Class VCEEnc
                         New NumParam With {.Switch = "--input-analyze", .Text = "Input Analyze", .Init = 5, .Config = {1, 600, 0.1, 1}},
                         New BoolParam With {.Switch = "--chapter-copy", .Text = "Copy Chapters"},
                         New BoolParam With {.Switch = "--vbaq", .Text = "Adaptive quantization in frame"},
+                        New BoolParam With {.Switch = "--no-deblock", .Text = "Disable deblock filter"},
                         New BoolParam With {.Switch = "--filler", .Text = "Use filler data"},
                         New StringParam With {.Switch = "--thread-affinity", .Text = "Thread Affinity"})
                 End If
@@ -516,6 +564,7 @@ Public Class VCEEnc
                 TweakSaturation.NumEdit.Enabled = Tweak.Value
                 TweakHue.NumEdit.Enabled = Tweak.Value
                 TweakBrightness.NumEdit.Enabled = Tweak.Value
+                TweakSwapuv.MenuButton.Enabled = Tweak.Value
 
                 PaSc.MenuButton.Enabled = Pa.Value
                 PaSs.MenuButton.Enabled = Pa.Value
@@ -523,6 +572,11 @@ Public Class VCEEnc
                 PaCaqStrength.MenuButton.Enabled = Pa.Value
                 PaInitqpsc.NumEdit.Enabled = Pa.Value
                 PaFskipMaxqp.NumEdit.Enabled = Pa.Value
+                PaLookahead.NumEdit.Enabled = Pa.Value
+                PaLtr.MenuButton.Enabled = Pa.Value
+                PaPaq.MenuButton.Enabled = Pa.Value
+                PaTaq.MenuButton.Enabled = Pa.Value
+                PaMotionQuality.MenuButton.Enabled = Pa.Value
 
                 PmdApplyCount.NumEdit.Enabled = Pmd.Value
                 PmdStrength.NumEdit.Enabled = Pmd.Value
@@ -567,7 +621,7 @@ Public Class VCEEnc
 
 
         Public Overrides Sub ShowHelp(options As String())
-            ShowConsoleHelp(Package.VCEEnc, options)
+            ShowConsoleHelp(Package.VCEEncC, options)
         End Sub
 
         Function GetSmoothArgs() As String
@@ -631,13 +685,18 @@ Public Class VCEEnc
         Function GetPaArgs() As String
             If Pa.Value Then
                 Dim ret = ""
-                If PaSc.Value <> PaSc.DefaultValue Then ret += " --pa-sc " & PaSc.OptionText.ToInvariantString
-                If PaSs.Value <> PaSs.DefaultValue Then ret += " --pa-ss " & PaSs.OptionText.ToInvariantString
-                If PaActivityType.Value <> PaActivityType.DefaultValue Then ret += " --pa-activity-type " & PaActivityType.OptionText.ToInvariantString
-                If PaCaqStrength.Value <> PaCaqStrength.DefaultValue Then ret += " --pa-caq-strength " & PaCaqStrength.OptionText.ToInvariantString
-                If PaInitqpsc.Value <> PaInitqpsc.DefaultValue Then ret += " --pa-initqpsc " & PaInitqpsc.Value.ToInvariantString
-                If PaFskipMaxqp.Value <> PaFskipMaxqp.DefaultValue Then ret += " --pa-fskip-maxqp " & PaFskipMaxqp.Value.ToInvariantString
-                Return ("--pa " + ret.TrimStart(" "c)).Trim()
+                If PaSc.Value <> PaSc.DefaultValue Then ret += ",sc=" & PaSc.OptionText.ToInvariantString
+                If PaSs.Value <> PaSs.DefaultValue Then ret += ",ss=" & PaSs.OptionText.ToInvariantString
+                If PaActivityType.Value <> PaActivityType.DefaultValue Then ret += ",activity-type=" & PaActivityType.OptionText.ToInvariantString
+                If PaCaqStrength.Value <> PaCaqStrength.DefaultValue Then ret += ",caq-strength=" & PaCaqStrength.OptionText.ToInvariantString
+                If PaInitqpsc.Value <> PaInitqpsc.DefaultValue Then ret += ",initqpsc=" & PaInitqpsc.Value.ToInvariantString
+                If PaFskipMaxqp.Value <> PaFskipMaxqp.DefaultValue Then ret += ",fskip-maxqp=" & PaFskipMaxqp.Value.ToInvariantString
+                If PaLookahead.Value <> PaLookahead.DefaultValue Then ret += ",lookahead=" & PaLookahead.Value.ToInvariantString
+                If PaLtr.Value <> PaLtr.DefaultValue Then ret += ",ltr=" & PaLtr.Value.ToInvariantString
+                If PaPaq.Value <> PaPaq.DefaultValue Then ret += ",paq=" & PaPaq.Value.ToInvariantString
+                If PaTaq.Value <> PaTaq.DefaultValue Then ret += ",taq=" & PaTaq.Value.ToInvariantString
+                If PaMotionQuality.Value <> PaMotionQuality.DefaultValue Then ret += ",motion-quality=" & PaMotionQuality.Value.ToInvariantString
+                Return ("--pa " + ret.TrimStart(","c)).Trim()
             End If
             Return ""
         End Function
@@ -650,6 +709,7 @@ Public Class VCEEnc
                 If TweakSaturation.Value <> TweakSaturation.DefaultValue Then ret += ",saturation=" & TweakSaturation.Value.ToInvariantString
                 If TweakGamma.Value <> TweakGamma.DefaultValue Then ret += ",gamma=" & TweakGamma.Value.ToInvariantString
                 If TweakHue.Value <> TweakHue.DefaultValue Then ret += ",hue=" & TweakHue.Value.ToInvariantString
+                If TweakSwapuv.Value <> TweakSwapuv.DefaultValue Then ret += ",swapuv=" & TweakSwapuv.ValueText.ToInvariantString
                 Return ("--vpp-tweak " + ret.TrimStart(","c)).Trim()
             End If
             Return ""
@@ -761,7 +821,7 @@ Public Class VCEEnc
                     If AfsRFF.Value <> AfsRFF.DefaultValue Then ret += ",rff=" + If(AfsRFF.Value, "on", "off")
                     If AfsTimecode.Value <> AfsTimecode.DefaultValue Then ret += ",timecode=" + If(AfsTimecode.Value, "on", "off")
                     If AfsLog.Value <> AfsLog.DefaultValue Then ret += ",log=" + If(AfsLog.Value, "on", "off")
-                    Return "--vpp-afs " + ret.TrimStart(","c)
+                    Return ("--vpp-afs " + ret.TrimStart(","c)).Trim()
                 Case 2
                     If NnediField.Value <> NnediField.DefaultValue Then ret += ",field=" + NnediField.ValueText
                     If NnediNns.Value <> NnediNns.DefaultValue Then ret += ",nns=" + NnediNns.ValueText
@@ -771,7 +831,10 @@ Public Class VCEEnc
                     If NnediErrortype.Value <> NnediErrortype.DefaultValue Then ret += ",errortype=" + NnediErrortype.ValueText
                     If NnediPrec.Value <> NnediPrec.DefaultValue Then ret += ",prec=" + NnediPrec.ValueText
                     If NnediWeightfile.Value <> "" Then ret += ",weightfile=" + NnediWeightfile.Value.Escape
-                    Return "--vpp-nnedi " + ret.TrimStart(","c)
+                    Return ("--vpp-nnedi " + ret.TrimStart(","c)).Trim()
+                Case 3
+                    If Yadif.Value <> Yadif.DefaultValue Then ret += ",mode=" + Yadif.ValueText
+                    Return ("--vpp-yadif " + ret.TrimStart(","c)).Trim()
                 Case Else
                     Return ret
             End Select
@@ -802,7 +865,7 @@ Public Class VCEEnc
             Dim targetPath = p.VideoEncoder.OutputPath.ChangeExt(p.VideoEncoder.OutputExt)
 
             If includePaths AndAlso includeExecutable Then
-                ret = Package.VCEEnc.Path.Escape
+                ret = Package.VCEEncC.Path.Escape
             End If
 
             Select Case Decoder.ValueText
@@ -816,7 +879,7 @@ Public Class VCEEnc
                     sourcePath = "-"
 
                     If includePaths Then
-                        ret = If(includePaths, Package.QSVEnc.Path.Escape, "QSVEncC64") + " -o - -c raw" + " -i " + If(includePaths, p.SourceFile.Escape, "path") + " | " + If(includePaths, Package.VCEEnc.Path.Escape, "VCEEncC64")
+                        ret = If(includePaths, Package.QSVEncC.Path.Escape, "QSVEncC64") + " -o - -c raw" + " -i " + If(includePaths, p.SourceFile.Escape, "path") + " | " + If(includePaths, Package.VCEEncC.Path.Escape, "VCEEncC64")
                     End If
                 Case "ffdxva"
                     sourcePath = "-"
@@ -826,13 +889,13 @@ Public Class VCEEnc
                         ret = If(includePaths, Package.ffmpeg.Path.Escape, "ffmpeg") +
                             " -threads 1 -hwaccel dxva2 -i " + If(includePaths, p.SourceFile.Escape, "path") +
                             " -f yuv4mpegpipe -pix_fmt " + pix_fmt + " -strict -1 -loglevel fatal - | " +
-                            If(includePaths, Package.VCEEnc.Path.Escape, "VCEEncC64")
+                            If(includePaths, Package.VCEEncC.Path.Escape, "VCEEncC64")
                     End If
                 Case "ffqsv"
                     sourcePath = "-"
 
                     If includePaths Then
-                        ret = If(includePaths, Package.ffmpeg.Path.Escape, "ffmpeg") + " -threads 1 -hwaccel qsv -i " + If(includePaths, p.SourceFile.Escape, "path") + " -f yuv4mpegpipe -strict -1 -pix_fmt yuv420p -loglevel fatal - | " + If(includePaths, Package.VCEEnc.Path.Escape, "VCEEncC64")
+                        ret = If(includePaths, Package.ffmpeg.Path.Escape, "ffmpeg") + " -threads 1 -hwaccel qsv -i " + If(includePaths, p.SourceFile.Escape, "path") + " -f yuv4mpegpipe -strict -1 -pix_fmt yuv420p -loglevel fatal - | " + If(includePaths, Package.VCEEncC.Path.Escape, "VCEEncC64")
                     End If
                 Case "vce"
                     sourcePath = p.LastOriginalSourceFile
@@ -845,16 +908,56 @@ Public Class VCEEnc
                 ret += " " + q.Select(Function(item) item.GetArgs).Join(" ")
             End If
 
-            Select Case Mode.Value
-                Case 0
-                    ret += " --cqp " & QPI.Value & ":" & QPP.Value & ":" & QPB.Value
-                Case 1
-                    ret += " --cbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
-                Case 2
-                    ret += " --vbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
-                Case 3
-                    ret += " --qvbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+            Select Case Codec.ValueText
+                Case "h264"
+                    Select Case Mode.Value
+                        Case 0
+                            ret += If(QPAdvanced.Value, $"--cqp {QPI.Value}:{QPP.Value}:{QPB.Value}", $" --cqp {QP.Value}")
+                        Case 1
+                            ret += " --cbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case 2
+                            ret += " --cbrhq " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case 3
+                            ret += " --vbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case 4
+                            ret += " --vbrhq " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case 5
+                            ret += " --qvbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case Else
+                            Throw New NotImplementedException("Mode not supported")
+                    End Select
+                Case "hevc"
+                    Select Case Mode.Value
+                        Case 0
+                            ret += " --cqp " & QPI.Value & ":" & QPP.Value & ":" & QPB.Value
+                        Case 1
+                            ret += " --cbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case 2
+                            ret += " --vbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case Else
+                            Throw New NotImplementedException("Mode not supported")
+                    End Select
+                Case "av1"
+                    Select Case Mode.Value
+                        Case 0
+                            ret += If(QPAdvanced.Value, $"--cqp {QPI.Value}:{QPP.Value}:{QPB.Value}", $" --cqp {QP.Value}")
+                        Case 1
+                            ret += " --cbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case 2
+                            ret += " --cbrhq " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case 3
+                            ret += " --vbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case 4
+                            ret += " --vbrhq " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case 5
+                            ret += " --qvbr " & If(pass = 1, Bitrate.Value, p.VideoBitrate)
+                        Case Else
+                            Throw New NotImplementedException("Mode not supported")
+                    End Select
+                Case Else
+                    Throw New NotImplementedException("Codec not supported")
             End Select
+
 
             If CInt(p.CropLeft Or p.CropTop Or p.CropRight Or p.CropBottom) <> 0 AndAlso
                 (p.Script.IsFilterActive("Crop", "Hardware Encoder") OrElse
@@ -885,7 +988,7 @@ Public Class VCEEnc
         End Function
 
         Public Overrides Function GetPackage() As Package
-            Return Package.VCEEnc
+            Return Package.VCEEncC
         End Function
     End Class
 End Class

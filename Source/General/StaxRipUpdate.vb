@@ -2,13 +2,15 @@
 Imports System.ComponentModel
 Imports System.Net
 Imports System.Net.Http
+Imports System.Reflection
 Imports System.Text.RegularExpressions
+Imports System.Windows.Forms.VisualStyles.VisualStyleElement
 
 Public Class StaxRipUpdate
     Shared HttpClient As New HttpClient
 
     Shared Sub ShowUpdateQuestion()
-        If Not s.CheckForUpdatesQuestion Then
+        If Not g.IsDevelopmentPC AndAlso Not s.CheckForUpdatesQuestion Then
             Using td As New TaskDialog(Of String)()
                 td.Title = "Check for updates"
                 td.Icon = TaskIcon.Question
@@ -28,41 +30,33 @@ Public Class StaxRipUpdate
         End If
     End Sub
 
-    Shared Async Sub CheckForUpdate(
-        Optional force As Boolean = False,
-        Optional includeDevBuilds As Boolean = False,
-        Optional x64 As Boolean = True)
+    Shared Async Sub CheckForUpdateAsync(Optional force As Boolean = False, Optional x64 As Boolean = True)
+        If Not s.CheckForUpdates AndAlso Not force Then Exit Sub
 
         Try
-            If Not s.CheckForUpdates AndAlso Not force Then
-                Exit Sub
-            End If
-
             If (Date.Now - s.CheckForUpdatesLastRequest).TotalHours >= 24 OrElse force Then
                 Dim changelogUrl = "https://raw.githubusercontent.com/staxrip/staxrip/master/Changelog.md"
                 Dim releaseUrl = "https://github.com/staxrip/staxrip/releases"
 
-                Dim currentVersion = Reflection.Assembly.GetEntryAssembly.GetName.Version
+                Dim currentVersion = Assembly.GetEntryAssembly.GetName.Version
                 Dim latestVersions = New List(Of (Version As Version, ReleaseType As String, SourceSite As String, DownloadUri As String, FileName As String))
                 Dim response = Await HttpClient.GetAsync(releaseUrl)
                 response.EnsureSuccessStatusCode()
                 Dim content = Await response.Content.ReadAsStringAsync()
-                Dim linkMatches = Regex.Matches(content, "(?<="")/staxrip/staxrip/releases/download/v?(\d+\.\d+\.\d+(?:\.\d+)?)/(StaxRip-v(\d+\.\d+\.\d+(?:\.\d+)?)[^""]*\.7z)(?="")")
+                Dim linkMatches = Regex.Matches(content, "(?<="")/staxrip/staxrip/releases/tag/v?(\d+\.\d+\.\d+(?:\.\d+)?)(?="")")
 
                 For Each linkMatch As Match In linkMatches
-                    Dim onlineVersion = Version.Parse(linkMatch.Groups(3).Value)
+                    Dim onlineVersionString = linkMatch.Groups(1).Value
+                    Dim onlineVersion = Version.Parse(linkMatch.Groups(1).Value)
 
                     If onlineVersion <= currentVersion Then
                         Exit For
                     End If
 
-                    If onlineVersion.Build > 0 Then
-                        If includeDevBuilds Then
-                            latestVersions.Add((onlineVersion, "DEV version", releaseUrl, "https://github.com" + linkMatch.Groups(0).Value, linkMatch.Groups(2).Value))
-                        End If
-                    Else
-                        latestVersions.Add((onlineVersion, "release", releaseUrl, "https://github.com" + linkMatch.Groups(0).Value, linkMatch.Groups(2).Value))
-                    End If
+                    Dim filename = $"StaxRip-v{onlineVersionString}-x64.7z"
+                    Dim downloadUri = $"https://github.com/staxrip/staxrip/releases/download/v{onlineVersionString}/{filename}"
+
+                    latestVersions.Add((onlineVersion, "release", releaseUrl, downloadUri, filename))
                 Next
 
                 If latestVersions.Count > 0 Then
@@ -94,7 +88,8 @@ Public Class StaxRipUpdate
                                                 td.Content += "..."
                                                 Exit For
                                             ElseIf line.TrimStart().StartsWith("-") Then
-                                                line = Regex.Replace(line, "\(/\.\./\.\./issues/\d+\)", "")
+                                                line = Regex.Replace(line, "(?<=\W\(\[#\d+\])(\(/\.\./\.\./\w+/\d+\))(?=\)$)", "", RegexOptions.CultureInvariant)
+                                                line = Regex.Replace(line, "(?<=^| ) (?= |-)", "  ", RegexOptions.CultureInvariant)
                                                 td.Content += line + BR
                                                 changes += 1
                                             End If
@@ -152,7 +147,7 @@ Public Class StaxRipUpdate
 
     Shared Sub OnDownloadComplete(sender As Object, e As AsyncCompletedEventArgs)
         If Not e.Cancelled AndAlso e.Error Is Nothing Then
-            MsgInfo("Download successed!")
+            MsgInfo("Download succeeded!")
         Else
             MsgError("Download failed!")
         End If

@@ -2,6 +2,7 @@
 Imports System.ComponentModel
 Imports System.Globalization
 Imports System.Text.RegularExpressions
+Imports System.Threading.Tasks
 
 Imports StaxRip.UI
 
@@ -12,9 +13,7 @@ Public Class MuxerForm
 
     Protected Overloads Overrides Sub Dispose(disposing As Boolean)
         If disposing Then
-            If Not (components Is Nothing) Then
-                components.Dispose()
-            End If
+            components?.Dispose()
         End If
         MyBase.Dispose(disposing)
     End Sub
@@ -644,17 +643,17 @@ Public Class MuxerForm
 
 #End Region
 
-    Private Muxer As Muxer
-    Private AudioBindingSource As New BindingSource
-    Private SubtitleBindingSource As New BindingSource
-    Private SubtitleItems As New BindingList(Of SubtitleItem)
+    Private ReadOnly Muxer As Muxer
+    Private ReadOnly AudioBindingSource As New BindingSource
+    Private ReadOnly SubtitleBindingSource As New BindingSource
+    Private ReadOnly SubtitleItems As New BindingList(Of SubtitleItem)
 
     Sub New(muxer As Muxer)
         MyBase.New()
         InitializeComponent()
         SetMinimumSize(30, 21)
         RestoreClientSize(45, 22)
-        Text += " - " + muxer.Name
+        Text += $" - {muxer.Name} - {g.DefaultCommands.GetApplicationDetails()}"
         Me.Muxer = muxer
         AddSubtitles(muxer.Subtitles)
         CommandLineControl.tb.Text = muxer.AdditionalSwitches
@@ -760,6 +759,18 @@ Public Class MuxerForm
         forcedColumn.DataPropertyName = "Forced"
         dgvSubtitles.Columns.Add(forcedColumn)
 
+        If TypeOf muxer Is MkvMuxer Then
+            Dim commentaryColumn As New DataGridViewCheckBoxColumn
+            commentaryColumn.HeaderText = "Commentary"
+            commentaryColumn.DataPropertyName = "Commentary"
+            dgvSubtitles.Columns.Add(commentaryColumn)
+
+            Dim hearingimpairedColumn As New DataGridViewCheckBoxColumn
+            hearingimpairedColumn.HeaderText = "Hearingimpaired"
+            hearingimpairedColumn.DataPropertyName = "Hearingimpaired"
+            dgvSubtitles.Columns.Add(hearingimpairedColumn)
+        End If
+
         Dim idColumn As New DataGridViewTextBoxColumn
         idColumn.ReadOnly = True
         idColumn.HeaderText = "ID"
@@ -842,20 +853,18 @@ Public Class MuxerForm
         Property Filepath As String
 
         Public Overrides Function ToString() As String
-            If Filepath.Contains("_attachment_") Then
-                Return Filepath.Right("_attachment_")
-            End If
-
-            Return Path.GetFileName(Filepath)
+            Return If(Filepath.Contains("_attachment_"), Filepath.Right("_attachment_"), Path.GetFileName(Filepath))
         End Function
     End Class
 
     Public Class SubtitleItem
         Property Enabled As Boolean
         Property Language As Language
-        Property Title As String
-        Property Forced As Boolean
+        Property Title As String = ""
         Property [Default] As Boolean
+        Property Forced As Boolean
+        Property Commentary As Boolean
+        Property Hearingimpaired As Boolean
         Property ID As Integer
         Property TypeName As String
         Property Size As String
@@ -865,8 +874,6 @@ Public Class MuxerForm
 
     Protected Overrides Sub OnShown(e As EventArgs)
         MyBase.OnShown(e)
-
-        Dim lastAction As Action = Nothing
 
         Dim UI = SimpleUI
         UI.Store = Muxer
@@ -931,22 +938,11 @@ Public Class MuxerForm
             ml.Help = "Optional language of the video stream."
             ml.Property = NameOf(MkvMuxer.VideoTrackLanguage)
 
+            PopulateLanguagesAsync(ml.Button)
+
             Dim compression = UI.AddMenu(Of CompressionMode)()
             compression.Text = "Subtitle Compression"
             compression.Property = NameOf(MkvMuxer.Compression)
-
-            lastAction = Sub()
-                             For Each i In Language.Languages
-                                 If i.IsCommon Then
-                                     ml.Button.Add(i.ToString + " (" + i.TwoLetterCode + ", " + i.ThreeLetterCode + ")", i)
-                                 Else
-                                     ml.Button.Add("More | " + i.ToString.Substring(0, 1).ToUpperInvariant + " | " + i.ToString + " (" + i.TwoLetterCode + ", " + i.ThreeLetterCode + ")", i)
-                                 End If
-
-                                 Application.DoEvents()
-                             Next
-                         End Sub
-
         ElseIf TypeOf Muxer Is MP4Muxer Then
             tpAttachments.Enabled = False
 
@@ -967,7 +963,6 @@ Public Class MuxerForm
 
         page.ResumeLayout()
         ApplyTheme()
-        lastAction?.Invoke
         UpdateControls()
     End Sub
 
@@ -990,6 +985,58 @@ Public Class MuxerForm
         End If
     End Sub
 
+    Sub PopulateLanguage(menuButton As MenuButton, path As String, obj As Object)
+        If IsDisposingOrDisposed Then Return
+        If menuButton Is Nothing Then Return
+
+        If InvokeRequired Then
+            Try
+                Invoke(New MethodInvoker(Sub() PopulateLanguage(menuButton, path, obj)))
+            Catch ex As Exception
+            End Try
+        Else
+            Try
+                menuButton.Add(path, obj)
+            Catch ex As Exception
+            End Try
+        End If
+    End Sub
+
+    Sub PopulateLanguages(menuButton As MenuButton)
+        Try
+            menuButton.Menu.Enabled = False
+            menuButton.Enabled = False
+
+            For Each lng In Language.Languages.OrderBy(Function(x) x.EnglishName)
+                If IsDisposingOrDisposed Then Return
+
+                If lng.IsCommon Then
+                    PopulateLanguage(menuButton, lng.ToString + " (" + lng.TwoLetterCode + ", " + lng.ThreeLetterCode + ")", lng)
+                Else
+                    PopulateLanguage(menuButton, "More | " + lng.ToString.Substring(0, 1).ToUpperInvariant + " | " + lng.ToString + " (" + lng.TwoLetterCode + ", " + lng.ThreeLetterCode + ")", lng)
+                End If
+            Next
+        Catch ex As Exception
+        Finally
+            menuButton.Enabled = True
+            menuButton.Menu.Enabled = True
+        End Try
+    End Sub
+
+    Async Sub PopulateLanguagesAsync(menuButton As MenuButton)
+        Dim task As Task
+
+        Try
+            SyncLock menuButton
+                task = Task.Run(Sub() PopulateLanguages(menuButton))
+            End SyncLock
+        Catch ex As Exception
+        Finally
+        End Try
+
+        Await task
+    End Sub
+
     Sub SetValues()
         Muxer.Subtitles.Clear()
 
@@ -997,8 +1044,10 @@ Public Class MuxerForm
             subtitle.Subtitle.Language = subtitle.Language
             subtitle.Subtitle.Enabled = subtitle.Enabled
             subtitle.Subtitle.Title = subtitle.Title
-            subtitle.Subtitle.Forced = subtitle.Forced
             subtitle.Subtitle.Default = subtitle.Default
+            subtitle.Subtitle.Forced = subtitle.Forced
+            subtitle.Subtitle.Commentary = subtitle.Commentary
+            subtitle.Subtitle.Hearingimpaired = subtitle.Hearingimpaired
 
             If subtitle.Subtitle.Title Is Nothing Then
                 subtitle.Subtitle.Title = ""
@@ -1041,13 +1090,16 @@ Public Class MuxerForm
     End Sub
 
     Sub AddAudio(path As String)
-        Dim profileSelection As New SelectionBox(Of AudioProfile)
-        profileSelection.Title = "Audio Profile"
-        profileSelection.Text = "Please select an audio profile."
+        Dim profileSelection As New SelectionBox(Of AudioProfile) With {
+            .Title = "Audio Profile",
+            .Text = "Please select an audio profile."
+        }
 
         For Each audioProfile In s.AudioProfiles
             profileSelection.AddItem(audioProfile)
         Next
+
+        profileSelection.SelectedText = "Copy/Mux"
 
         If profileSelection.Show <> DialogResult.OK Then
             Exit Sub
@@ -1060,16 +1112,20 @@ Public Class MuxerForm
             ap.Delay = g.ExtractDelay(ap.File)
         End If
 
+        Dim trackname = g.ExtractTrackNameFromFilename(path)
+        ap.StreamName = If(trackname, ap.StreamName)
+
         If FileTypes.VideoAudio.Contains(ap.File.Ext) Then
             ap.Streams = MediaInfo.GetAudioStreams(ap.File)
         End If
 
         ap.SetStreamOrLanguage()
 
-        If Not ap.Stream Is Nothing Then
-            Dim streamSelection As New SelectionBox(Of AudioStream)
-            streamSelection.Title = "Stream Selection"
-            streamSelection.Text = "Please select an audio stream."
+        If ap.Stream IsNot Nothing Then
+            Dim streamSelection As New SelectionBox(Of AudioStream) With {
+                .Title = "Stream Selection",
+                .Text = "Please select an audio stream."
+            }
 
             For Each stream In ap.Streams
                 streamSelection.AddItem(stream)
@@ -1098,46 +1154,36 @@ Public Class MuxerForm
                 Dim sizeText = ""
 
                 If i.Size > 0 Then
-                    If i.Size > PrefixedSize(2).Factor Then
-                        sizeText = $"{i.Size / PrefixedSize(2).Factor:f1} {PrefixedSize(2).Unit}"
-                    Else
-                        sizeText = $"{i.Size / PrefixedSize(1).Factor:f1} {PrefixedSize(1).Unit}"
-                    End If
+                    sizeText = If(i.Size > PrefixedSize(2).Factor,
+                        $"{i.Size / PrefixedSize(2).Factor:f1} {PrefixedSize(2).Unit}",
+                        $"{i.Size / PrefixedSize(1).Factor:f1} {PrefixedSize(1).Unit}")
                 End If
 
-                Dim _option As String
+                Dim _option As String = ""
 
-                If i.Default AndAlso i.Forced Then
-                    _option = "default, forced"
-                ElseIf i.Default Then
-                    _option = "default"
-                ElseIf i.Forced Then
-                    _option = "forced"
-                Else
-                    _option = ""
-                End If
-
-                Dim id As Integer
+                If i.Default Then _option &= ", default"
+                If i.Forced Then _option &= ", forced"
+                If i.Commentary Then _option &= ", comment"
+                If i.Hearingimpaired Then _option &= ", hearingimpaired"
+                _option = _option.TrimStart(","c).Trim()
 
                 Dim match = Regex.Match(i.Path, " ID(\d+)")
+                Dim id = If(match.Success, CInt(match.Groups(1).Value), i.StreamOrder + 1)
 
-                If match.Success Then
-                    id = CInt(match.Groups(1).Value)
-                Else
-                    id = i.StreamOrder + 1
-                End If
-
-                Dim item As New SubtitleItem
-                item.Enabled = i.Enabled
-                item.Language = i.Language
-                item.Title = i.Title
-                item.Default = i.Default
-                item.Forced = i.Forced
-                item.ID = id
-                item.TypeName = i.TypeName
-                item.Size = sizeText
-                item.Filename = i.Path.FileName
-                item.Subtitle = i
+                Dim item As New SubtitleItem With {
+                    .Enabled = i.Enabled,
+                    .Language = i.Language,
+                    .Title = i.Title,
+                    .Default = i.Default,
+                    .Forced = i.Forced,
+                    .Commentary = i.Commentary,
+                    .Hearingimpaired = i.Hearingimpaired,
+                    .ID = id,
+                    .TypeName = i.TypeName,
+                    .Size = sizeText,
+                    .Filename = i.Path.FileName,
+                    .Subtitle = i
+                }
 
                 SubtitleItems.Add(item)
             End If
@@ -1166,11 +1212,12 @@ Public Class MuxerForm
 
     Sub bnCommandLinePreview_Click(sender As Object, e As EventArgs) Handles bnCommandLinePreview.Click
         SetValues()
-        g.ShowCommandLinePreview("Command Line", Muxer.GetCommandLine)
+        g.ShowCommandLinePreview("Command Line", Muxer.GetCommandLine, False)
     End Sub
 
     Sub bnAudioAdd_Click(sender As Object, e As EventArgs) Handles bnAudioAdd.Click
         Using dialog As New OpenFileDialog
+            dialog.Multiselect = True
             dialog.SetFilter(FileTypes.Audio.Union(FileTypes.VideoAudio))
             dialog.SetInitDir(p.TempDir)
 
@@ -1211,8 +1258,8 @@ Public Class MuxerForm
 
     Sub bnAttachmentAdd_Click(sender As Object, e As EventArgs) Handles bnAttachmentAdd.Click
         Using dialog As New OpenFileDialog
-            dialog.SetFilter({"ttf", "txt", "jpg", "png", "otf", "jpeg", "xml", "nfo"})
             dialog.Multiselect = True
+            dialog.SetFilter({"ttf", "txt", "jpg", "png", "otf", "jpeg", "xml", "nfo"})
             dialog.SetInitDir(p.TempDir)
 
             If dialog.ShowDialog = DialogResult.OK Then
@@ -1318,8 +1365,8 @@ Public Class MuxerForm
 
     Sub bnSubtitleAdd_Click(sender As Object, e As EventArgs) Handles bnSubtitleAdd.Click
         Using dialog As New OpenFileDialog
-            dialog.SetFilter(FileTypes.SubtitleIncludingContainers)
             dialog.Multiselect = True
+            dialog.SetFilter(FileTypes.SubtitleIncludingContainers)
             dialog.SetInitDir(s.LastSourceDir)
 
             If dialog.ShowDialog = DialogResult.OK Then
@@ -1361,9 +1408,9 @@ Public Class MuxerForm
                     For Each i In SubtitleItems
                         i.Title = i.Language.CultureInfo.EnglishName
 
-                        If i.Forced Then
-                            i.Title += " (forced)"
-                        End If
+                        If i.Forced Then i.Title += " (forced)"
+                        If i.Commentary Then i.Title += " (commentary)"
+                        If i.Hearingimpaired Then i.Title += " (hearingimpaired)"
                     Next
 
                     SubtitleBindingSource.ResetBindings(False)
@@ -1371,9 +1418,9 @@ Public Class MuxerForm
                     For Each i In SubtitleItems
                         i.Title = i.Language.CultureInfo.NeutralCulture.DisplayName
 
-                        If i.Forced Then
-                            i.Title += " (forced)"
-                        End If
+                        If i.Forced Then i.Title += " (forced)"
+                        If i.Commentary Then i.Title += " (commentary)"
+                        If i.Hearingimpaired Then i.Title += " (hearingimpaired)"
                     Next
 
                     SubtitleBindingSource.ResetBindings(False)

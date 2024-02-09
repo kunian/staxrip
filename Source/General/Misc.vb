@@ -7,8 +7,10 @@ Imports System.Management
 Imports System.Runtime.InteropServices
 Imports System.Text
 Imports System.Text.RegularExpressions
+Imports System.Threading.Tasks
 Imports Microsoft.Win32
 Imports StaxRip.UI
+Imports StaxRip.VideoEncoder
 
 Public Module ShortcutModule
     Public g As New GlobalClass
@@ -536,27 +538,54 @@ Public Class Language
     <NonSerialized>
     Public IsCommon As Boolean
 
+    Public ReadOnly Property IsDetermined As Boolean
+        Get
+            If CultureInfo IsNot Nothing Then Return CultureInfo.TwoLetterISOLanguageName <> "iv"
+            Return ThreeLetterCodeValue <> "und"
+        End Get
+    End Property
+
     Sub New()
         Me.New("")
     End Sub
 
-    Sub New(ci As CultureInfo, Optional isCommon As Boolean = False)
+    Sub New(ci As CultureInfo, Optional isCommon As Boolean = False, Optional isInitial As Boolean = False)
         Me.IsCommon = isCommon
-        CultureInfoValue = ci
+
+        If isInitial OrElse ci IsNot Nothing OrElse Languages.Select(Function(x) x.Name).ContainsEx(ci.Name) Then
+            CultureInfoValue = ci
+        Else
+            CultureInfoValue = CultureInfo.InvariantCulture
+        End If
     End Sub
 
-    Sub New(twoLetterCode As String, Optional isCommon As Boolean = False)
+    Sub New(lang As String, Optional isCommon As Boolean = False, Optional isInitial As Boolean = False)
         Try
+            If String.IsNullOrWhiteSpace(lang) Then Throw New ArgumentNullException("lang")
+
             Me.IsCommon = isCommon
 
-            Select Case twoLetterCode
-                Case "iw"
-                    twoLetterCode = "he"
-                Case "jp"
-                    twoLetterCode = "ja"
+            If isInitial Then
+                CultureInfoValue = New CultureInfo(lang)
+                Return
+            End If
+
+            Dim selectedLanguages As IEnumerable(Of String)
+
+            Select Case lang.Length
+                Case 2
+                    selectedLanguages = Languages.Select(Function(x) x.TwoLetterCode).Union(Languages.Select(Function(x) x.CultureInfo.IetfLanguageTag))
+                Case 3
+                    selectedLanguages = Languages.Select(Function(x) x.ThreeLetterCode)
+                Case Else
+                    selectedLanguages = Languages.Select(Function(x) x.Name)
             End Select
 
-            CultureInfoValue = New CultureInfo(twoLetterCode)
+            If selectedLanguages.ContainsEx(lang) Then
+                CultureInfoValue = New CultureInfo(lang)
+            Else
+                CultureInfoValue = CultureInfo.InvariantCulture
+            End If
         Catch ex As Exception
             CultureInfoValue = CultureInfo.InvariantCulture
         End Try
@@ -623,11 +652,13 @@ Public Class Language
 
     ReadOnly Property Name() As String
         Get
-            If CultureInfo.TwoLetterISOLanguageName = "iv" Then
-                Return "Undetermined"
-            Else
-                Return CultureInfo.EnglishName
-            End If
+            Return If(CultureInfo.TwoLetterISOLanguageName = "iv", "und", CultureInfo.Name)
+        End Get
+    End Property
+
+    ReadOnly Property EnglishName() As String
+        Get
+            Return If(CultureInfo.TwoLetterISOLanguageName = "iv", "Undetermined", CultureInfo.EnglishName)
         End Get
     End Property
 
@@ -636,25 +667,24 @@ Public Class Language
     Shared ReadOnly Property Languages() As List(Of Language)
         Get
             If LanguagesValue Is Nothing Then
-                Dim l As New List(Of Language)
-
-                l.Add(New Language("en", True))
-                l.Add(New Language("es", True))
-                l.Add(New Language("de", True))
-                l.Add(New Language("fr", True))
-                l.Add(New Language("it", True))
-                l.Add(New Language("ru", True))
-                l.Add(New Language("zh", True))
-                l.Add(New Language("hi", True))
-                l.Add(New Language("ja", True))
-                l.Add(New Language("pt", True))
-                l.Add(New Language("ar", True))
-                l.Add(New Language("bn", True))
-                l.Add(New Language("pa", True))
-                l.Add(New Language("ms", True))
-                l.Add(New Language("ko", True))
-
-                l.Add(New Language(CultureInfo.InvariantCulture, True))
+                Dim l As New List(Of Language) From {
+                    New Language("en", True, True),
+                    New Language("es", True, True),
+                    New Language("de", True, True),
+                    New Language("fr", True, True),
+                    New Language("it", True, True),
+                    New Language("ru", True, True),
+                    New Language("zh", True, True),
+                    New Language("hi", True, True),
+                    New Language("ja", True, True),
+                    New Language("pt", True, True),
+                    New Language("ar", True, True),
+                    New Language("bn", True, True),
+                    New Language("pa", True, True),
+                    New Language("ms", True, True),
+                    New Language("ko", True, True),
+                    New Language(CultureInfo.InvariantCulture, True, True)
+                }
 
                 Dim current = l.Where(Function(a) a.TwoLetterCode = CultureInfo.CurrentCulture.TwoLetterISOLanguageName).FirstOrDefault
 
@@ -666,8 +696,8 @@ Public Class Language
 
                 Dim l2 As New List(Of Language)
 
-                For Each i In CultureInfo.GetCultures(CultureTypes.NeutralCultures)
-                    l2.Add(New Language(i))
+                For Each i In CultureInfo.GetCultures(CultureTypes.AllCultures)
+                    l2.Add(New Language(i, False, True))
                 Next
 
                 l2.Sort()
@@ -687,7 +717,7 @@ Public Class Language
 
 
     Overrides Function ToString() As String
-        Return Name
+        Return $"{EnglishName} [{Name}]"
     End Function
 
     Function CompareTo(other As Language) As Integer Implements System.IComparable(Of Language).CompareTo
@@ -984,6 +1014,7 @@ Public Class M2TSStream
     Property IsChapters As Boolean
     Property IsSubtitle As Boolean
     Property IsVideo As Boolean
+    Property IsVideoEnhancementLayer As Boolean
     Property Language As New Language
     Property ListViewItem As ListViewItem
     Property Options As String = ""
@@ -1034,6 +1065,7 @@ Public Class AudioStream
     Property Bitrate2 As Integer
     Property Channels As Integer
     Property Channels2 As Integer
+    Property Commentary As Boolean
     Property Delay As Integer
     Property Enabled As Boolean = True
     Property Forced As Boolean
@@ -1117,7 +1149,7 @@ Public Class AudioStream
             End If
 
             If Language.TwoLetterCode <> "iv" Then
-                ret += " " + Language.Name
+                ret += " " + Language.EnglishName
             End If
 
             If Title <> "" AndAlso Title <> " " Then
@@ -1229,6 +1261,8 @@ Public Class Subtitle
     Property Language As Language
     Property [Default] As Boolean
     Property Forced As Boolean
+    Property Commentary As Boolean
+    Property Hearingimpaired As Boolean
     Property Enabled As Boolean = True
     Property Size As Long
 
@@ -1243,7 +1277,7 @@ Public Class Subtitle
     ReadOnly Property Filename As String
         Get
             Dim ret = "ID" & (Index + 1)
-            ret += " " + Language.Name
+            ret += "_[" + Language.Name + "]"
 
             If Title <> "" AndAlso Title <> " " AndAlso p.SourceFile <> "" Then
                 ret += " {" + Title.Shorten(50).EscapeIllegalFileSysChars + "}"
@@ -1312,15 +1346,17 @@ Public Class Subtitle
                     End Try
 
                     Dim autoCode = p.PreferredSubtitles.ToLowerInvariant.SplitNoEmptyAndWhiteSpace(",", ";", " ")
-                    Dim prefLang = autoCode.ContainsAny("all", st.Language.TwoLetterCode, st.Language.ThreeLetterCode)
+                    Dim prefLang = autoCode.ContainsAny("all", st.Language.TwoLetterCode, st.Language.ThreeLetterCode) OrElse p.SubtitleMode = SubtitleMode.All
                     Dim goodMode = p.SubtitleMode <> SubtitleMode.PreferredNoMux AndAlso p.SubtitleMode <> SubtitleMode.Disabled
                     st.Enabled = prefLang AndAlso goodMode
                     st.Forced = path.ToLowerEx().Contains("forced")
+                    st.Commentary = path.ToLowerEx().Contains("commentary")
+                    st.Hearingimpaired = path.ToLowerEx().Contains("hearingimpaired")
 
                     st.IndexIDX = CInt(Regex.Match(line, ", index: (\d+)").Groups(1).Value)
                 End If
 
-                If Not st Is Nothing AndAlso line.StartsWith("timestamp: ") Then
+                If st IsNot Nothing AndAlso line.StartsWith("timestamp: ") Then
                     st.StreamOrder = indexData
                     st.Path = path
                     indexData += 1
@@ -1353,32 +1389,81 @@ Public Class Subtitle
                 ret.Add(st)
             Next
         Else
-            Dim st As New Subtitle()
-            st.Size = New FileInfo(path).Length
-            Dim match = Regex.Match(path, " ID(\d+)")
+            Dim st As New Subtitle With {
+                .Size = New FileInfo(path).Length
+            }
+            Dim idMatch = Regex.Match(path, "\\ID(\d+)")
 
-            If match.Success Then
-                st.StreamOrder = match.Groups(1).Value.ToInt - 1
+            If idMatch.Success Then
+                st.StreamOrder = idMatch.Groups(1).Value.ToInt - 1
             End If
 
-            For Each lng In Language.Languages
-                If path.Contains(lng.CultureInfo.EnglishName) Then
-                    st.Language = lng
-                    Exit For
-                End If
-            Next
+            Dim filename = path.FileName.LeftLast(".")
+            Dim extracted = filename.Right("_[").Left("]")
 
-            If path.Contains("{") Then
-                Dim title = path.Right("{")
-                st.Title = title.Left("}").UnescapeIllegalFileSysChars
+            If Not String.IsNullOrWhiteSpace(extracted) Then
+                For Each lng In Language.Languages.OrderBy(Function(x) x.Name.Length)
+                    If extracted = lng.Name Then
+                        st.Language = lng
+                        Exit For
+                    ElseIf extracted = lng.EnglishName Then
+                        st.Language = lng
+                        Exit For
+                    ElseIf extracted = lng.ThreeLetterCode Then
+                        st.Language = lng
+                        Exit For
+                    ElseIf extracted = lng.TwoLetterCode Then
+                        st.Language = lng
+                        Exit For
+                    End If
+                Next
             End If
+
+            If st.Language Is Nothing OrElse Not st.Language.IsDetermined Then
+                For Each lng In Language.Languages.OrderByDescending(Function(x) x.Name.Length)
+                    If filename.Contains(lng.TwoLetterCode) Then
+                        st.Language = lng
+                    End If
+
+                    If filename.Contains(lng.ThreeLetterCode) Then
+                        st.Language = lng
+                    End If
+
+                    If path.Contains(lng.EnglishName.Left(" (")) Then
+                        st.Language = lng
+                    End If
+
+                    If path.Contains(lng.EnglishName) Then
+                        st.Language = lng
+
+                        If filename.Contains(lng.EnglishName) Then
+                            st.Language = lng
+                            Exit For
+                        End If
+                    End If
+
+                    If path.Contains(lng.Name) Then
+                        st.Language = lng
+
+                        If filename.Contains(lng.Name) Then
+                            st.Language = lng
+                            Exit For
+                        End If
+                    End If
+                Next
+            End If
+
+            Dim trackname = g.ExtractTrackNameFromFilename(path)
+            st.Title = If(trackname, st.Title)
 
             Dim autoCode = p.PreferredSubtitles.ToLowerInvariant.SplitNoEmptyAndWhiteSpace(",", ";", " ")
-            Dim prefLang = autoCode.ContainsAny("all", st.Language.TwoLetterCode, st.Language.ThreeLetterCode)
+            Dim prefLang = autoCode.ContainsAny("all", st.Language.TwoLetterCode, st.Language.ThreeLetterCode) OrElse p.SubtitleMode = SubtitleMode.All
             Dim goodMode = p.SubtitleMode <> SubtitleMode.PreferredNoMux AndAlso p.SubtitleMode <> SubtitleMode.Disabled
             st.Enabled = prefLang AndAlso goodMode
             st.Path = path
             st.Forced = path.ToLowerEx().Contains("forced")
+            st.Commentary = path.ToLowerEx().Contains("commentary")
+            st.Hearingimpaired = path.ToLowerEx().Contains("hearingimpaired")
 
             For Each i In autoCode
                 If i.IsInt AndAlso st.Path.Contains("ID" & i.ToInt & " ") Then
@@ -1393,22 +1478,20 @@ Public Class Subtitle
 
         Select Case p.DefaultSubtitle
             Case DefaultSubtitleMode.Single
-                If enabledSubs.Count = 1 Then
-                    enabledSubs(0).Default = True
-                End If
+                If enabledSubs.Count = 1 Then enabledSubs(0).Default = True
             Case DefaultSubtitleMode.First
-                If enabledSubs.Count > 0 Then
-                    enabledSubs(0).Default = True
-                End If
+                If enabledSubs.Count > 0 Then enabledSubs(0).Default = True
             Case DefaultSubtitleMode.Second
-                If enabledSubs.Count > 1 Then
-                    enabledSubs(1).Default = True
-                End If
+                If enabledSubs.Count > 1 Then enabledSubs(1).Default = True
             Case DefaultSubtitleMode.Default
                 For Each st In enabledSubs
-                    If st.Path.Contains("_default") Then
-                        st.Default = True
-                    End If
+                    If st.Path.Contains("_default") Then st.Default = True
+                Next
+            Case DefaultSubtitleMode.DefaultOrFirst
+                If enabledSubs.Any() Then enabledSubs(0).Default = True
+
+                For Each st In enabledSubs
+                    If st.Path.Contains("_default") Then st.Default = True
                 Next
         End Select
 
@@ -1453,7 +1536,7 @@ Public Class Subtitle
             Dim aviPath = p.TempDir + inSub.Path.Base + "_cut_mm.avi"
             Dim d = (p.CutFrameCount / p.CutFrameRate).ToString("f9", CultureInfo.InvariantCulture)
             Dim r = p.CutFrameRate.ToString("f9", CultureInfo.InvariantCulture)
-            Dim args = $"-f lavfi -i color=c=black:s=16x16:d={d}:r={r} -y -hide_banner -c:v copy " + aviPath.Escape
+            Dim args = $"-f lavfi -i color=c=black:s=16x16:d={d}:r={r} -y -hide_banner -c:v ffv1 -g 1 " + aviPath.Escape
 
             Using proc As New Proc
                 proc.Header = "Create avi file for subtitle cutting"
@@ -1524,10 +1607,12 @@ Public Class Subtitle
             If Not subs.NothingOrEmpty Then
                 Dim outSub = Subtitle.Create(subPath)(0)
                 outSub.Language = inSub.Language
-                outSub.Forced = inSub.Forced
-                outSub.Default = inSub.Default
                 outSub.Title = inSub.Title
                 outSub.Enabled = True
+                outSub.Default = inSub.Default
+                outSub.Forced = inSub.Forced
+                outSub.Commentary = inSub.Commentary
+                outSub.Hearingimpaired = inSub.Hearingimpaired
                 subtitles(x) = outSub
             Else
                 emptySubs.Add(subtitles(x))
@@ -1557,6 +1642,13 @@ Public Enum ContainerStreamType
     Chapters
 End Enum
 
+Public Enum VideoComparisonFileType
+    AviSynthScript
+    Picture
+    VapourSynthScript
+    Video
+End Enum
+
 Public Class FileTypes
     Shared Property AudioRaw As String() = {"aac", "eac3", "ec3", "thd"}
     Shared Property Audio As String() = {"flac", "dtshd", "dtsma", "dtshr", "thd", "thd+ac3", "truehd", "aac", "ac3", "dts", "ec3", "eac3", "m4a", "mka", "mp2", "mp3", "mpa", "opus", "wav", "w64"}
@@ -1564,18 +1656,21 @@ Public Class FileTypes
     Shared Property VideoAudio As String() = {"avi", "mp4", "mkv", "divx", "flv", "mov", "mpeg", "mpg", "ts", "m2t", "m2ts", "vob", "webm", "wmv", "pva", "ogg", "ogm", "m4v", "3gp"}
     Shared Property DGDecNVInput As String() = {"264", "h264", "265", "h265", "avc", "hevc", "hvc", "mkv", "mp4", "m4v", "mpg", "vob", "ts", "m2ts", "mts", "m2t", "mpv", "m2v"}
     Shared Property eac3toInput As String() = {"dts", "dtshd", "dtshr", "dtsma", "evo", "vob", "ts", "m2ts", "wav", "w64", "pcm", "raw", "flac", "ac3", "ec3", "eac3", "thd", "thd+ac3", "mlp", "mp2", "mp3", "mpa"}
+    Shared Property OpusencInput As String() = {"aif", "aiff", "flac", "ogg", "pcm", "wav", "w64"}
     Shared Property NicAudioInput As String() = {"wav", "mp2", "mpa", "mp3", "ac3", "dts"}
     Shared Property SubtitleExludingContainers As String() = {"srt", "ass", "idx", "sup", "ttxt", "ssa", "smi"}
     Shared Property SubtitleSingle As String() = {"srt", "ass", "sup", "ttxt", "ssa", "smi"}
     Shared Property SubtitleIncludingContainers As String() = {"m2ts", "mkv", "mp4", "m4v", "ass", "idx", "smi", "srt", "ssa", "sup", "ttxt"}
     Shared Property TextSub As String() = {"ass", "idx", "smi", "srt", "ssa", "ttxt", "usf", "ssf", "psb", "sub"}
+    Shared Property VideoComparisonInput As String() = {"264", "265", "avc", "avi", "avs", "d2v", "dgi", "dgim", "divx", "flv", "h264", "h265", "hevc", "hvc", "ivf", "m2t", "m2ts", "m2v", "mkv", "mov", "mp4", "m4v", "mpeg", "mpg", "mpv", "mts", "ogg", "ogm", "pva", "rmvb", "ts", "vdr", "vob", "vpy", "webm", "wmv", "y4m", "3gp"}
     Shared Property Video As String() = {"264", "265", "avc", "avi", "avs", "d2v", "dgi", "dgim", "divx", "flv", "h264", "h265", "hevc", "hvc", "ivf", "m2t", "m2ts", "m2v", "mkv", "mov", "mp4", "m4v", "mpeg", "mpg", "mpv", "mts", "ogg", "ogm", "pva", "rmvb", "ts", "vdr", "vob", "vpy", "webm", "wmv", "y4m", "3gp"}
     Shared Property VideoIndex As String() = {"d2v", "dgi", "dga", "dgim"}
     Shared Property VideoOnly As String() = {"264", "265", "avc", "gif", "h264", "h265", "hevc", "hvc", "ivf", "m2v", "mpv", "apng", "png", "y4m"}
     Shared Property VideoRaw As String() = {"264", "265", "h264", "h265", "avc", "hevc", "hvc", "ivf"}
     Shared Property VideoText As String() = {"d2v", "dgi", "dga", "dgim", "avs", "vpy"}
-    Shared Property VideoDemuxOutput As String() = {"avi", "mpg", "h264", "h265"}
+    Shared Property VideoDemuxOutput As String() = {"avi", "mpg", "h264", "h265", "hevc"}
     Shared Property Image As String() = {"bmp", "jpg", "png", "gif", "tif", "jpe", "jpeg", "psd"}
+    Shared Property DeezyInput As String() = VideoAudio.Concat(Audio).ToArray()
 
     Shared Function GetFilter(values As IEnumerable(Of String)) As String
         Return "*." + values.Join(";*.") + "|*." + values.Join(";*.") + "|All Files|*.*"
@@ -1591,6 +1686,7 @@ Public Class OSVersion
     Shared ReadOnly Property Windows7 As Single = 6.1
     Shared ReadOnly Property Windows8 As Single = 6.2
     Shared ReadOnly Property Windows10 As Single = 10.0
+    Shared ReadOnly Property Windows11 As Single = 11.0
     Shared ReadOnly Property Current As Single = CSng(Environment.OSVersion.Version.Major + Environment.OSVersion.Version.Minor / 10)
 End Class
 
@@ -1758,6 +1854,207 @@ Public Enum MsgIcon
     Question = MessageBoxIcon.Question
 End Enum
 
+Public Enum HdrmetadataMode
+    None
+    <DispName("HDR10+ only")> HDR10Plus
+    <DispName("Dolby Vision only")> DolbyVision
+    All
+End Enum
+
+Public Enum DoviMode
+    <DispName("Untouched")> Untouched = -1
+    <DispName("0: Parses RPU, rewrites it untouched")> Mode0 = 0
+    <DispName("1: Convert RPU to be MEL compatible")> Mode1 = 1
+    <DispName("2: Convert RPU to be 8.1 compatible")> Mode2 = 2
+    <DispName("3: Convert 5 to 8.1")> Mode3 = 3
+    <DispName("4: Convert to 8.4")> Mode4 = 4
+    <DispName("5: Convert to 8.1, preserves mapping")> Mode5 = 5
+End Enum
+
+Public Enum AutoCropMode
+    <DispName("Disabled")> Disabled = 0
+    <DispName("Dolby Vision only")> DolbyVisionOnly = 1
+    <DispName("Always")> Always = 2
+End Enum
+
+<Serializable>
+Public Class DolbyVisionMetadataFile
+    Public Property Crop As Padding = New Padding(0)
+    Public ReadOnly Property Path As String = Nothing
+
+    Public ReadOnly Property Level5JsonFilePath As String
+        Get
+            Return If(String.IsNullOrWhiteSpace(Path), "", $"{Path.DirAndBase()}_L5.json")
+        End Get
+    End Property
+
+    Public ReadOnly Property EditorConfigFilePath As String
+        Get
+            Return If(String.IsNullOrWhiteSpace(Path), "", $"{Path.DirAndBase()}_Config.json")
+        End Get
+    End Property
+
+    Public ReadOnly Property CroppedRpuFilePath As String
+        Get
+            Return If(String.IsNullOrWhiteSpace(Path), "", $"{Path.DirAndBase()}_Cropped.rpu")
+        End Get
+    End Property
+
+
+    Private Sub New()
+    End Sub
+
+    Public Sub New(filePath As String)
+        Me.Path = filePath
+
+        WriteLevel5Export(False)
+        ReadLevel5Export()
+    End Sub
+
+    Public Sub New(filePath As String, crop As Padding)
+        Me.Path = filePath
+        Me.Crop = crop
+    End Sub
+
+    Public Sub ReadLevel5Export()
+        If Not Path?.FileExists() Then Return
+        If Not Level5JsonFilePath.FileExists() Then Return
+
+        Try
+            Dim jsonContent = Level5JsonFilePath.ReadAllText()
+            Dim strippedJsonContent = jsonContent.Right("presets").Left("edits")
+            strippedJsonContent = Regex.Replace(strippedJsonContent, "\s", "")
+            Dim presetMatches = Regex.Matches(strippedJsonContent, "\{.+?:(?<id>\d+),.+?:(?<left>\d+),.+?:(?<right>\d+),.+?:(?<top>\d+),.+?:(?<bottom>\d+)\}")
+
+            If presetMatches.Count = 0 Then Return
+
+            Dim newCrop As New Padding(Integer.MaxValue)
+
+            For Each match As Match In presetMatches
+                newCrop.Left = Math.Min(newCrop.Left, match.Groups("left").Value.ToInt())
+                newCrop.Top = Math.Min(newCrop.Top, match.Groups("top").Value.ToInt())
+                newCrop.Right = Math.Min(newCrop.Right, match.Groups("right").Value.ToInt())
+                newCrop.Bottom = Math.Min(newCrop.Bottom, match.Groups("bottom").Value.ToInt())
+            Next
+
+            Me.Crop = newCrop
+        Catch ex As AbortException
+            Throw ex
+        Catch ex As Exception
+            g.ShowException(ex)
+            Throw New AbortException
+        End Try
+    End Sub
+
+    Public Sub WriteLevel5Export(Optional overwrite As Boolean = False)
+        If Not Path?.FileExists() Then Return
+        If Not overwrite AndAlso Level5JsonFilePath.FileExists() Then Return
+
+        Try
+            Dim arguments = $"export --data ""level5={Level5JsonFilePath}"" -i ""{Path}"""
+            Using proc As New Proc
+                proc.Package = Package.DoViTool
+                proc.Project = p
+                proc.Header = "Extract Level5 data from RPU metadata file"
+                proc.Encoding = Encoding.UTF8
+                proc.Arguments = arguments
+                proc.AllowedExitCodes = {0}
+                proc.OutputFiles = {Level5JsonFilePath}
+                proc.Start()
+            End Using
+        Catch ex As AbortException
+            Throw ex
+        Catch ex As Exception
+            g.ShowException(ex)
+            Throw New AbortException
+        End Try
+
+        ReadLevel5Export()
+    End Sub
+
+    Public Sub WriteEditorConfigFile(offset As Padding, Optional overwrite As Boolean = True)
+        If Not Level5JsonFilePath?.FileExists() Then Return
+        If Not overwrite AndAlso EditorConfigFilePath.FileExists() Then Return
+        If offset = Padding.Empty Then Return
+        If offset.Left < 0 OrElse offset.Top < 0 OrElse offset.Right < 0 OrElse offset.Bottom < 0 Then Throw New ArgumentOutOfRangeException(NameOf(offset))
+
+        Try
+            Dim jsonContent = Level5JsonFilePath.ReadAllText()
+            jsonContent = Regex.Replace(jsonContent, "\s", "")
+            Dim presetMatches = Regex.Matches(jsonContent.Left("""edits"":{"), "\{.+?:(?<id>\d+),.+?:(?<left>\d+),.+?:(?<right>\d+),.+?:(?<top>\d+),.+?:(?<bottom>\d+)\}")
+            Dim edits = jsonContent.Right("""edits"":{").Left("}")
+
+            If presetMatches.Count = 0 Then Return
+            If String.IsNullOrWhiteSpace(edits) Then Return
+
+            Dim presets = ""
+            For Each match As Match In presetMatches
+                Dim left = match.Groups("left").Value.ToInt() - offset.Left
+                Dim top = match.Groups("top").Value.ToInt() - offset.Top
+                Dim right = match.Groups("right").Value.ToInt() - offset.Right
+                Dim bottom = match.Groups("bottom").Value.ToInt() - offset.Bottom
+
+                If left < 0 Then Throw New ArgumentOutOfRangeException(NameOf(left), "Negative values are not valid offsets for RPU files")
+                If top < 0 Then Throw New ArgumentOutOfRangeException(NameOf(top), "Negative values are not valid offsets for RPU files")
+                If right < 0 Then Throw New ArgumentOutOfRangeException(NameOf(right), "Negative values are not valid offsets for RPU files")
+                If bottom < 0 Then Throw New ArgumentOutOfRangeException(NameOf(bottom), "Negative values are not valid offsets for RPU files")
+
+                presets += $"{{"
+                presets += $"""id"":{match.Groups("id").Value},"
+                presets += $"""left"":{left},"
+                presets += $"""right"":{right},"
+                presets += $"""top"":{top},"
+                presets += $"""bottom"":{bottom}"
+                presets += $"}},"
+            Next
+            presets = presets.TrimEnd(","c)
+            presets = $"""presets"":[{presets}]"
+            edits = $"""edits"":{{{edits}}}"
+            Dim result = $"{{""active_area"":{{{presets},{edits}}}}}"
+
+            result.WriteFileUTF8(EditorConfigFilePath)
+        Catch ex As AbortException
+            Throw ex
+        Catch ex As Exception
+            g.ShowException(ex)
+            Throw New AbortException
+        End Try
+    End Sub
+
+    Public Function WriteCroppedRpu(Optional overwrite As Boolean = True) As String
+        If Not Path?.FileExists() Then Return Nothing
+        If Not EditorConfigFilePath?.FileExists() Then Return Nothing
+        If Not overwrite AndAlso CroppedRpuFilePath.FileExists() Then Return Nothing
+
+        Try
+        Dim arguments = $"editor -i ""{Path}"" -j ""{EditorConfigFilePath}"" -o ""{CroppedRpuFilePath}"""
+        Using proc As New Proc
+            proc.Package = Package.DoViTool
+            proc.Project = p
+            proc.Header = "Creating new RPU metadata file"
+            proc.Encoding = Encoding.UTF8
+            proc.Arguments = arguments
+            proc.AllowedExitCodes = {0}
+            proc.OutputFiles = {CroppedRpuFilePath}
+            proc.Start()
+        End Using
+        Catch ex As AbortException
+            Throw ex
+        Catch ex As Exception
+            g.ShowException(ex)
+            Throw New AbortException
+        End Try
+
+        Return CroppedRpuFilePath
+    End Function
+End Class
+
+Public Enum TimestampsMode
+    Never
+    <DispName("VFR only")> VfrOnly
+    Always
+End Enum
+
 Public Enum DemuxMode
     <DispName("Show Dialog")> Dialog
     <DispName("Preferred Languages")> Preferred
@@ -1766,10 +2063,11 @@ Public Enum DemuxMode
 End Enum
 
 Public Enum SubtitleMode
+    <DispName("Demux and include all languages")> All
     <DispName("Demux and include preferred languages")> Preferred
     <DispName("Demux preferred languages but don't include them")> PreferredNoMux
-    <DispName("Show dialog to choose subtitles to be included")> Dialog
     <DispName("Include preferred languages directly without demuxing")> Direct
+    <DispName("Show dialog to choose subtitles to be included")> Dialog
     <DispName("Don't include subtitles")> Disabled
 End Enum
 
@@ -3881,6 +4179,7 @@ Public Enum DefaultSubtitleMode
     English
     Native
     [Default]
+    DefaultOrFirst
 End Enum
 
 Public Class Attachment
@@ -3931,6 +4230,36 @@ Public Enum CommandLinePreview
     <DispName("Code Preview")> CodePreview
     <DispName("Powershell")> Powershell
     <DispName("Windows Terminal")> WindowsTerminal
+End Enum
+
+Public Enum ApplicationExitMode
+    Regular
+    BypassProjectSaving
+    ForceProjectSaving
+End Enum
+
+Public Enum VkResult
+    Success = 0
+    NotReady = 1
+    Timeout = 2
+    EventSet = 3
+    EventReset = 4
+    Incomplete = 5
+    ErrorOutOfHostMemory = -1
+    ErrorOutOfDeviceMemory = -2
+    ErrorInitializationFailed = -3
+    ErrorDeviceLost = -4
+    ErrorMemoryMapFailed = -5
+    ErrorLayerNotPresent = -6
+    ErrorExtensionNotPresent = -7
+    ErrorFeatureNotPresent = -8
+    ErrorIncompatibleDriver = -9
+    ErrorTooManyObjects = -10
+    ErrorFormatNotSupported = -11
+    ErrorFragmentedPool = -12
+    ErrorUnknown = -13
+    ErrorOutOfPoolMemory = -1000069000
+    ErrorInvalidExternalHandle = -1000072003
 End Enum
 
 Public Interface IUpdateUI

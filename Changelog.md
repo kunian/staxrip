@@ -1,13 +1,669 @@
 <!--
-v2.14.0 (not published yet)
+v2.3x.0 (not published yet)
 ====================
 
-- 
+- ...
 - Update tools
+    - ...
 - Update AviSynth+ plugins
+    - ...
 - Update Dual plugins
+    - ...
 - Update VapourSynth plugins
+    - ...
 -->
+
+
+v2.35.0 (2024-02-02)
+====================
+
+- eac3to: Let eac3to extract the Enhancement Layer for metadata extraction
+- eac3to: Let eac3to don't overwrite existing video files
+- UI: Set "Output Mod" default value to 4
+- UI: Fix eac3to window title
+- UI: Fix setting Crop from/to Dolby Vision RPU files
+- UI: Move "Auto Crop on opening" to Options
+- UI: Extend "Auto Crop on opening" to run only when Dolby Vision metadata exists
+- UI: Let "Auto Crop" use Dolby Vision metadata to set the crop values
+- UI: Some small but cool stuff I have forgotten to write down
+- Update tools
+    - DeeZy v0.1.7
+    - eac3to v3.48
+    - MediaInfo v24.01
+
+
+v2.34.0 (2024-01-26)
+====================
+
+- CommandLine: Add new parameter "-SetCrop" to set the crop values, best used with a source file as first parameter
+- UI: Fix delay when opening and closing Muxer/Container options window
+- UI: Fix Assistant displaying issues
+- UI: Fix crash on sources with multiple video tracks on newer versions of eac3to
+- UI: Fix Dolby Vision wrong RPU file handling ([#1190](/../../issues/1190))
+- UI: When a Dolby Vision metadata file is used for "Import VUI metadata", the Crop filter will be applied
+- UI: Let "HDR metadata extraction" also set the json file when an rpu file was found/set
+- UI: Add option to save Preview window size ([#986](/../../issues/986))
+- UI: Improve "Output Highlighting"
+- NVEncC: Add --vpp-denoise-dct parameter
+- x265: Add Assistant check for VBV settings when using DolbyVision
+- Update tools
+    - chapterEditor v1.42
+    - DeeZy v0.1.6
+    - eac3to v3.47
+    - libFLAC v1.4.3
+    - NVEncC v7.41
+    - qaac v2.81
+    - vvencFFapp v1.10.0 r209-8fe23c7
+- Update AviSynth+ plugins
+    - SMDegrain v4.5.0d
+    - xy-VSFilter + XySubFilter v3.2.0.810
+- Update Dual plugins
+    - ffms2 v3.0.1.0 1357+36 r1393 1c0dcfa391 StvG
+    - L-SMASH-Works v1167 [20240112]
+
+
+v2.33.0 (2024-01-15)
+====================
+
+- UI: Audio import via container options reads the track name from the file name ([#1184](/../../issues/1184))
+- UI: Enhance "HDR metadata extraction"
+- UI: Extend two-letter language codes
+- UI: Fix crash on "HDR metadata extraction" on some systems
+- UI: Fix language recognition of subtitles from paths ([#1174](/../../issues/1174))
+- UI: Fix ffmpeg not being able to extract "Timed Text" subtitles properly ([#1185](/../../issues/1185))
+- UI: Improve "Output Highlighting"
+- UI: Let ffmpeg Demuxer also extract all subtitles
+- UI: Run "Frame Mismatch" only on video files
+- UI: Better handling for "Frame Mismatch" errors
+
+
+v2.32.0 (2024-01-08)
+====================
+
+- CommandLine: Add new parameter "-ExitWithoutSaving" to exit StaxRip without saving an unsaved project
+- Thumbnailer: Fix crash on some video files with higher Bit Depth
+- UI: Add HDR metadata extraction to project options
+- UI: Add HDR metadata file to encoder settings when using "Import VUI metadata"
+- UI: Search for HDR metadata file next to source file and in temp folder to let it import via "Import VUI metadata"
+- UI: Add option to show an error message on "Frame Mismatch" after encoding
+- UI: Add "DefaultOrFirst" to "Default Subtitles" option
+- UI: Add "Close Project" to Main Menu
+- UI: Change default option for "Default Subtitles" to "Default"
+- UI: Enhance "Output Highlighting"
+- UI: Enhance language recognition of subtitles from paths ([#1174](/../../issues/1174))
+- UI: Fix subtitles not being enabled after import even if set so ([#1174](/../../issues/1174))
+- UI: Fix UI response delay when opening "Audio Settings" window ([#1175](/../../issues/1175))
+- UI: Fix demuxing VOBs ignores settings ([#577](/../../issues/577))
+- UI: Multiple minor fixes and improvements
+- Update tools
+    - AOMEnc v3.8.0-188-g1cc70eeadf-x64-msvc1937
+    - DoVi_Tool v2.1.0
+    - HDR10Plus_Tool v1.6.0
+    - MKVToolNix v82.0
+    - MP4Box v2.3-DEV-rev724-g8684dfbcc-x64-msvc1937
+    - QSVEncC v7.58
+    - rav1e v0.7.0-(p20240102-2-g7d773ea)-x64-gcc13.2.0
+    - Subtitle Edit v4.0.3
+    - SvtAv1EncApp v1.8.0-3+6-0bd9640d-[Mod-by-Patman]-x64-msvc1937
+    - vvencFFapp v1.10.0 r208-c2ace2a
+    - x265 v3.5+153+15-813ccbff0-.Mod-by-Patman.-x64-avx2-msvc1937
+- Update AviSynth+ plugins
+    - QTGMC v3.385s (2023-12-28)
+    - xy-VSFilter + XySubFilter v3.2.0.809
+- Update Dual plugins
+    - L-SMASH-Works v1164 [20240106]
+
+
+v2.31.0 (2024-01-01)
+====================
+
+- UI: Fix crash at startup on non Vulkan systems ([#1158](/../../issues/1158))
+- UI: Fix error message on source files with a long file path ([#1168](/../../issues/1168))
+- UI: Fix recognizing and interpreting source (subtitle) languages ([#1120](/../../issues/1120), [#1152](/../../issues/1152))
+- UI: Fix issues with disappearing Cutting filter and the misleading Assistant message ([#1124](/../../issues/1124))
+- UI: Fix command line long path issues for qaac ([#1166](/../../issues/1166))
+- UI: Fix flickering on Video Comparison when window too small to fit all tabs ([#1127](/../../issues/1127))
+- UI: Shorten long file names in Video Comparison to enhance usability
+- UI: Switch languages internally from 2-/3-letter codes to country-language except preferred languages options, not completely yet
+- NVEncC: Fix missing Multipass parameter for QBVR mode ([#1162](/../../issues/1162))
+- NVEncC: Fix minor issues with invisible parameters due to selection order
+- NVEncC: Fix incomplete definition of --device parameter
+- NVEncC: Fix incomplete definition of --split-enc parameter
+- NVEncC: Rename QBVR mode quality setting name ([#1162](/../../issues/1162))
+- vvencFFapp: Extend "Frames to be encoded" for templates ([#1161](/../../issues/1161))
+- Update tools
+    - AOMEnc v3.8.0-178-ge065e0fead-x64-msvc1938
+    - FFmpeg N-113112-gf5f414d9c4-x64-gcc13.2.0
+    - MP4Box v2.3-DEV-rev724-g8684dfbcc-x64-msvc1938
+    - rav1e v0.6.1 (p20231226)-x64-gcc13.2.0
+    - SvtAv1EncApp v1.8.0-1+3-43997134-[Mod-by-Patman]-x64-msvc1938
+    - VapourSynth R65
+    - x264 v0.164.3172+8-d0a13eb-.Mod-by-Patman.-x64-gcc13.2.0
+    - x265 v3.5+153+14-caf1c2580-.Mod-by-Patman.-x64-avx2-msvc1938
+- Update AviSynth+ plugins
+    - TDeint v1.9
+    - TIVTC v1.0.28
+- Update Dual plugins
+    - ffms2 v3.0.1.0 1357+34 r1391 4fbfa13ea1 StvG
+    - L-SMASH-Works v1160 [20231214]
+
+
+v2.30.0 (2023-12-17)
+====================
+
+- Log: Fix not showing Media Info of source files in logs ([#1114](/../../issues/1114))
+- UI: Add Frame Rate Mode information on main window for source files
+- UI: Optimize addition of Tonemapping in Crop window
+- UI: Fix Video Comparison not being able to open more files when source file is loaded
+- UI: Fix progress detections for ffmpeg depending on used codec
+- UI: Fix progress detections for opusenc ([#1147](/../../issues/1147))
+- UI: Fix progress detections for given percentual values ([#1143](/../../issues/1143))
+- UI: Add Auto-Tonemapping support for Thumbnailer
+- UI: Fix ShowMessageBox Icon parameter
+- UI: Fix ShowMessageBox call through Command Line leads to an exception message ([#1141](/../../issues/1141))
+- UI: Add Flip filter profiles
+- DeeZy: Fix audio delay handled by encoder and muxer
+- FFmpeg: Add hardware AV1 support for AMD/Intel/NVidia ([#1145](/../../issues/1145))
+- NVEncC: Add --qvbr parameter ([#1139](/../../issues/1139))
+- NVEncC: Add --output-csp parameter
+- NVEncC: Add --disable-nvml parameter
+- NVEncC: Add Quiet Log Level
+- NVEncC: Fix AV1 CQ parameter values ([#1153](/../../issues/1153))
+- QSVEncC: Add Quiet Log Level
+- QSVEncC: Add --vpp-rff parameter
+- QSVEncC: Make --icq mode default encode mode
+- rav1e: Fix wrong parameter spelling that crash the encode ([#1138](/../../issues/1138))
+- SvtAv1EncApp: Add new SSIM tune option ([#1118](/../../issues/1118))
+- SvtAv1EncApp: Extend --keyint parameter options
+- SvtAv1EncApp: Fix --enable-qm parameter definition ([#1122](/../../issues/1122))
+- SvtAv1EncApp: Fix chunk encoding ([#1136](/../../issues/1136))
+- VCEEncC: Add AV1 support ([#1117](/../../issues/1117))
+- VCEEncC: Add --vpp-rff parameter
+- VCEEncC: Add --vpp-scaler-sharpness parameter
+- VCEEncC: Fix some issues and codec related params
+- VCEEncC: Remove --vpp-resize amf_point parameter option
+- vvencFFapp: Add new presets
+- x265: Fix --log-level param options
+- Update tools
+    - DeeZy v0.1.4
+    - eac3to v3.36
+    - FFmpeg N-112998-g1f56bfc986-20231216
+    - MediaInfo v23.11
+    - MKVToolNix v81.0
+    - NVEncC v7.40
+    - QSVEncC v7.57
+    - Subtitle Edit v4.0.2
+    - VCEEncC v8.21
+    - vvencFFapp v1.10.0
+- Update AviSynth+ plugins
+    - avs_libplacebo v1.5.2
+    - RemoveDirt v0.9.3
+- Update Dual plugins
+    - L-SMASH-Works v1156 [20231117]
+- Update VapourSynth plugins
+    - None
+
+
+v2.29.0 (2023-09-06)
+====================
+
+- Add header for target file Media Info
+- Add new (event) command to open blocking Preview window ([#1102](/../../issues/1102))
+- Extend title name length for demuxed file names
+- Log mismatch between frame count from FrameServer and target file after encode
+- UI: Show Changelog at first start
+- UI: Add possiblity to dismiss the PNGs saved message in VideoComparison ([#1067](/../../issues/1067))
+- UI: Add proper identification for HDR tonemapping in Crop window ([#1096](/../../issues/1096))
+- UI: Add Shortcut for "Save Project As"
+- UI: Allow multiple file selection in muxer for audio files
+- UI: Apply Crop filter when changing Frameserver
+- UI: Change Crop filter addition/setting behaviour
+- UI: Enhance Command Line Highlighting
+- UI: Enhance Output Highlighting
+- UI: Fix broken progress detection for ffmpeg ([#1109](/../../issues/1109))
+- UI: Fix crash when trying to open the menu in Processing window
+- Filters: Fix Vapoursynth filter resamplehq linkage ([#1101](/../../issues/1101))
+- Filters: Adjust SMDegrain presets
+- DeeZy: Fix issue with negative delay
+- QSVEncC: Fix bitrate issue in QBVR mode ([#1106](/../../issues/1106))
+- x265: Minor UI improvements
+- x265: Remove deprecated params --hist-threshold and --traditional-scenecut ([#1110](/../../issues/1110))
+- Update tools
+    - AOMEnc v3.7.0-363-g02b419c62e-x64-msvc1937
+    - chapterEditor v1.40
+    - DeeZy v0.1.1
+    - FFmpeg N-111918-g0adaa90d89-x64-gcc13.2.0
+    - libFLAC v1.3.3
+    - MP4Box v2.3-DEV-rev512-g0cdcdbaaa-x64-msvc1937
+    - NVEncC v7.31
+    - Subtitle Edit v4.0
+    - SvtAv1EncApp v1.7.0-0+13-b922871f-[Mod-by-Patman]-x64-msvc1937
+    - vvencFFapp v1.9.0 r189-19efe30
+    - x265 v3.5+147+17-e8947f740-.Mod-by-Patman.-x64-avx2-msvc1937
+- Update AviSynth+ plugins
+    - Descale v2023-04-02 8c53f5d
+    - JincResize v2.1.2
+    - vsMSharpen v2.0.1
+- Update VapourSynth plugins
+    - ASTDR v4
+    - DeCross v1
+    - Descale v2023-04-02 8c53f5d
+    - DFTTest2 v6
+    - insaneAA v0.91
+    - MotionMask v2
+    - TemporalSoften2 v1
+
+
+v2.28.0 (2023-08-25)
+====================
+
+- Add BackgroundColor from VideoComparison to Themes
+- Make line numbers added to code lines optional via Settings
+- Fix Code Preview not shown in selected windows/app
+- Reloading of Preview does not change the window size any more
+- DeeZy: Fix output progress detectation ([#1092](/../../issues/1092))
+- SvtAv1EncApp: Fix --enable-hdr parameter printout
+- SvtAv1EncApp: Fix wrong frames value
+- VapourSynth: Fix extreme rare bug when opening a source which causes a crash
+- vspipe: Fix deprecated parameter call
+- Update tools
+    - MKVToolNix v79.0
+- Update VapourSynth plugins
+    - SubText r4
+    - VSFilterMod v5.2.7
+
+
+v2.27.0 (2023-08-22)
+====================
+
+- Fix grammar (thanks to @LittleVulpix ([#1083](/../../pull/1083)))
+- Fix pathing issue on VapourSynth
+- Adjust SMDegrain presets
+
+
+v2.26.0 (2023-08-22)
+====================
+
+- Big VapourSynth update from R54 to R63 (Big thanks to @DJATOM and @jlw4049 for contributing, @pat-e and @Patman86 for helping and testing!)
+- Remove no-pipe call for x264 using VapourSynth due to incompatibility reasons
+- Add .mpeg as supported input file type for DGIndex/D2VWitch
+- Add DeeZy and OpusEnc as new audio encoders
+- Add new Tonemap presets
+- Add option to tonemap videos in Crop window
+- Add option to enhance contrast in Crop window for easier cropping
+- Add Reload command in Preview
+- Add line numbers to Code Preview
+- Let Enabling/Disabling a filter in Code Editor make refresh the script for the preview
+- Fix shortcut for Preview in Code Editor
+- Fix command line parameter issue with quotes
+- Improve Output Highlighting a tiny bit
+- Check also for negative error codes
+- Show warning for Windows 7 users regarding possible incompatibility issues at first start
+- Add new macros %audio_bitrate1%, %audio_bitrate2%, %audio_channels1%, %audio_channels2%, %audio_codec1%, %audio_codec2% ([#1075](/../../issues/1075))
+- Rename macro %delay1% to %audio_delay1% and %delay2% to %audio_delay2%
+- Fix "Auto Chroma Subsampling to 4:2:0" for VapourSynth not working on some sources ([#1033](/../../issues/1033))
+- Fix internally called AutoCrop not adding/enabling Crop-filter ([#1075](/../../issues/1075))
+- Fix internally called SmartAutoCrop not adding/enabling Crop-filter
+- Add more resize defaults ([#1079](/../../issues/1079))
+- Add possibility to reset window position when holding CTRL+SHIFT while window opens
+- Adjust Resize slider minimum/maximum values
+- Fix logs from processes being saved into templates ([#905](/../../issues/905))
+- SvtAv1EncApp: Fix infinite app calling loop when SvtAv1EncApp encoder profile selected while opening a file ([#1068](/../../issues/1068))
+- SvtAv1EncApp: Fix wrong multi-pass paremeter combination ([#1076](/../../issues/1076))
+- SvtAv1EncApp: Add proper 3-pass support
+- SvtAv1EncApp: Move Passes option to rate control to keep related settings together
+- Update tools
+    - AOMEnc v3.6.1-1047-gea674a22d0-x64-msvc1937
+    - DeeZy v0.1.0
+    - ffmpeg 6.0 N-111762-ga1928dff2c-x64-gcc13.2.0
+    - libFLAC v1.4.3 (used by eac3to)
+    - libsndfile v1.2.2 (used by qaac)
+    - Mp4Box v2.3-DEV-rev478-g892852666-x64-msvc1937
+    - mpv.net v6.0.4.0
+    - OpusEnc v1.4.6
+    - qaac v2.80
+    - QSVEncC v7.48
+    - rav1e v0.6.1-(p20230808)-x64-gcc13.2.0
+    - SvtAv1EncApp v1.6.0-12+12-02ddf03c-[Mod-by-Patman]-x64-msvc1937
+    - VapourSynth R63
+    - vvencFFapp v1.9.0
+    - x264 v0.164.3107+12-d987552-[Mod-by-Patman]-x64-gcc13.2.0
+    - x265 v3.5+104+20-5f9a54004-[Mod-by-Patman]-x64-msvc1937
+- Update AviSynth+ plugins
+    - AnimeIVTC v2.389 2023-07-20 mod
+    - BBorders v2023-04-28
+    - LSFplus v6.0 mix
+    - NNEDI3CL v1.0.8
+    - ScenesPack v4.5
+- Update Dual plugins
+    - L-SMASH-Works v1129.0.1.0 20230806
+- Update VapourSynth plugins
+    - AddGrain r10
+    - Bwdif r4.1
+    - edi_rpow2 v2021
+    - EEDI3m r4
+    - fmtconv r30
+    - fvsfunc v2022-10-14
+    - havsfunc r33 [modified by @jlw4049 and @Dendraspis]
+    - LibDedot v1.0
+    - LibP2P R2
+    - libvs_placebo v1.4.4
+    - mcdegrainsharp v2020-11-03
+    - MiscFilters R2
+    - muvsfunc v0.4.0
+    - mvmulti v2020-14-10
+    - mvsfunc r10
+    - nnedi_rpow2 v1.1.0
+    - NNEDI3CL v8
+    - Oyster v2021-05-16 [modified by @jlw4049 and @Dendraspis]
+    - Plum v2021-03-27 [modified by @jlw4049 and @Dendraspis]
+    - resamplehq v2.1.2
+    - RemoveGrain r1
+    - SangNom r42
+    - TCanny v14
+    - TimeCube v3.1
+    - TTempSmooth v4.1
+    - vcmod 2022-02-10.AC3
+    - Vine v2020-07-12 [modified by @jlw4049 and @Dendraspis]
+    - vsTAAmbk v0.8.2
+    - znedi3 r2.1
+    - ...and some more existing scripts updated to be compliant with VapourSynth R63
+
+
+v2.25.0 (2023-08-02)
+====================
+
+- Alter some main menu shortcuts
+- Reorganize main menu slightly
+- Save settings when selecting new startup template ([#1057](/../../issues/1057))
+- Add Reload function to Video Comparison
+- Add Video Comparison support for AviSynth and VapourSynth scripts ([#1055](/../../issues/1055))
+- Minor changes to progress detection
+- Fix broken progress detection for ffmpeg ([#1054](/../../issues/1054))
+- Add Commentary flag setting for audio tracks ([#959](/../../issues/959))
+- Add Commentary flag setting for subtitle tracks ([#959](/../../issues/959))
+- Add Hearing Impaired flag setting for subtitle tracks ([#960](/../../issues/960))
+- SvtAv1EncApp: Fix wrong parameter for encoding frames
+- SvtAv1EncApp: Add support for modified progress in @Patman86's mod
+- Update tools
+    - SvtAv1EncApp v1.6.0-4+7-0abb2b72-[Mod-by-Patman]-x64-msvc1936
+- Update AviSynth+ plugins
+    - avs_libplacebo v1.3.0
+    - DPID v1.1.0
+    - MasksPack v6.7
+    - Resizers Functions Pack v12.0
+    - TransformsPack v2.2.0
+- Update Dual plugins
+    - FFTW v3.3.10 (thanks to Nuihc88)
+
+
+v2.24.0 (2023-07-29)
+====================
+
+- AVS: Fix InterFrame not working with SVPFlow ([#1046](/../../issues/1046))
+- AOMEnc: Fix not saved target bitrate for CQ rate mode ([#1052](/../../issues/1052))
+- SvtAv1EncApp: Fix deprecated URLs
+- SvtAv1EncApp: Fix output path with spaces causing error ([#1045](/../../issues/1045))
+- SvtAv1EncApp: Move Passes to Basic category
+- SvtAv1EncApp: Add --progress parameter
+- SvtAv1EncApp: Fix encoding output and crash for  "--progress 2" ([#1045](/../../issues/1045))
+- Update tools
+    - chapterEditor v1.39
+    - MP4Box v2.3-DEV-rev472-g2a2327c3b
+    - vvencFFapp v1.9.0
+- Update AviSynth+ plugins
+    - edi_rpow2 v1.0 mod 87
+- Update Dual plugins
+    - FFTW v3.3.10/v3.3.5
+
+
+v2.23.0 (2023-07-24)
+====================
+
+- Add shortcut "Ctrl + E" to Event Commands
+- Add vertical scrollbar to Event Commands to make it less glitchy when adding multiple criteria - still glitchy ([#1048](/../../issues/1048))
+- Add new macro %encoder_profile% ([#1047](/../../issues/1047))
+- Create separate category for "Add filter to convert chroma subsampling to 4:2:0" added filter, after "Source" for progressive and at the end for interlaced sources (thanks to youer-mam) ([#1021](/../../issues/1021))
+- Fix crashing bug in Event Commands
+- Fix typo ([#1042](/../../issues/1042))
+- Rename macros %video_encoder_profile% to %encoder_profile% and %video_encoder_settings% to %encoder_settings%
+- Move "Add filter to convert chroma subsampling to 4:2:0" to Project
+- AOMEnc: Multiple changes to default values ([#1012](/../../issues/1012))
+- AOMEnc: Fix missing target bitrate for constrained quality ([#1044](/../../issues/1044))
+- QSVEncC: Add --vpp-pmd and --vpp-denoise parameters ([#1016](/../../issues/1016))
+- QSVEncC: Add --vpp-perc-pre-enc parameter
+- SvtAv1EncApp: Remake whole implementation and add parameters ([#893](/../../issues/893), [#1045](/../../issues/1045))
+- vvencFFapp: Add basic implementation
+- Update tools
+    - AviSynth+ v3.7.3 (official release)
+    - MediaInfo v23.07
+    - MKVToolNix v78.0
+    - QSVEncC v7.47
+    - vvencFFapp v1.9.0-rc2 r182-3fcfd93
+- Update AviSynth+ plugins
+    - yadifmod2 v0.2.8
+- Update Dual plugins
+    - FFTW v3.3.5
+
+
+v2.22.0 (2023-07-06)
+====================
+
+- Add conversion speed information relative to video framerate for x264 and x265 reformatted progress output ([#781](/../../issues/781))
+- Fix stealing focus on job completion again ([#333](/../../issues/333))
+- QSVEncC: Add missing parameters ([#1016](/../../issues/1016))
+- Update tools
+    - FFmpeg v6.0 N-111327-g695789eacc-x64-gcc13.1.0
+    - Mp4Box v2.3-DEV-rev395-g98979a443-x64-msvc1936
+    - qaac v2.80
+    - x264 v0.164.3107+9-30c58f9-.Mod-by-Patman.-x64-gcc13.1.0
+    - x265 v3.5+104+15-ba4e7a2cb-.Mod-by-Patman.-x64-msvc1936
+
+
+v2.21.0 (2023-07-03)
+====================
+
+- AOMEnc: Fix "--matrix-coefficients" options ([#1023](/../../issues/1023))
+- NVEncC: Fix "--lossless" being visible for H264 only
+- QSVEncC: Add "--tile-col" and "--tile-row" parameters
+- QSVEncC: Add "--max-framesize" parameter
+- QSVEncC: Add "--hevc-gpb" parameter
+- QSVEncC: Set "--tile-row 2" as default parameter/value
+- QSVEncC: Fix some UI bugs
+- Fix wrong channel recognition and extraction for temp audio files ([#1027](/../../issues/1027))
+- Fix stealing focus on job completion ([#333](/../../issues/333))
+- Fix opening multiple VOB files in multiple instances instead of running just one
+- Replace app icon
+- Update tools
+    - AOMEnc v3.6.1-807-g7e0293d9c-x64-msvc1936
+    - chapterEditor v1.38
+    - MediaInfo v23.06
+    - MKVToolNix v77.0
+    - NVEncC v7.30
+    - QSVEncC v7.46
+    - rav1e v0.6.1-(p20230627-3-ge379128)-x64-gcc13.1.0
+    - SvtAv1EncApp v1.6.0-x64-msvc1936
+    - VCEEncC v8.16
+- Update AviSynth+ plugins
+    - CropResize 2023-06-02
+    - ExTools v10.2
+- Update Dual plugins
+    - FFTW v3.3.10
+    - SVPFlow1 v4.5.0.200 (Thanks to Nuihc88)
+    - SVPFlow2 v4.3.0.161 (Thanks to Nuihc88)
+
+
+v2.20.0 (2023-06-07)
+====================
+
+- Fix Updater due to changed GitHub pages ([#1019](/../../issues/1019))
+- AVS: Fix wrong importation of dependencies
+- x265: Selecting a Tune won't apply the preset settings anymore ([#894](/../../issues/894))
+- Update tools
+    - NVEncC v7.28
+    - QSVEncC v7.44
+    - VCEEncC v8.14
+- Update AviSynth+ plugins
+    - BWDIF v1.2.1 (due to QTGMC issues using EdiMode="BWDIF+NNEDI3")
+- Update Dual plugins
+    - SVPflow v4.2.0.133 (due to usage changes (red rectangle around the video frame))
+
+
+v2.19.0 (2023-05-27)
+====================
+
+- Add possibility to open multiple source files. StaxRip opens each file in a new instance sequentially ([#926](/../../issues/926))
+- FFmpeg: Remove "-strict experimental" from parameter call when av1 codec is used
+- NVEncC: Add new "--split-enc" parameter
+- QSVEncC: (better) AV1 support ([#919](/../../issues/919))
+- QSVEncC: Add parameters
+- Update tools
+    - MP4Box v2.3-DEV-rev267-ga6ae93532
+    - NVEncC v7.26
+    - rav1e v0.6.6
+    - VCEEncC v8.12
+- Update AviSynth+ plugins
+    - AvsResize vR21
+    - AVSTP v1.0.4.1
+    - BWDIF v1.2.5
+    - ChubbyRain3
+    - D2VSource v1.3.0
+    - Deblock v2020-08-30
+    - LSFmod v2.193 (fixed on 2022-10-21 with same version number)
+    - NicAudio v2.0.6
+    - nnedi3_resize16 v3.3 2023-03-27
+
+
+v2.18.0 (2023-05-22)
+====================
+
+- Set timestamp extraction for VFR MKV files only as default project option ([#817](/../../issues/817), [#1006](/../../issues/1006))
+- Fix minor issue with TransformsPack package definition
+- Fix UI issues especially with hidden checkbox texts on some machines by adding UI Fallback setting [Settings » User Interface » UI Fallback] ([#978](/../../issues/978))
+- NVEncC: Adjust some codec dependent parameters
+- NVEncC: AV1 support ([#949](/../../issues/949))
+- SVTAV1: Set "--key-init" to default value of -2 (thanks to samkatakouzinos ([#1011](/../../pull/1011)))
+- Update tools
+    - FFmpeg v6.0 N-110467-gefc2587260-g0e580806d8+2
+    - rav1e v0.6.4
+    - SVTAV1EncApp v1.5.0
+- Update AviSynth+ plugins
+    - CropResize v2022-11-19
+    - JPSDR v3.3.4 (W7 AVX2)
+    - SmoothD2 + SmoothD2C vA3
+    - TemporalDegrain2 v2.6.6
+    - TimecodeFPS v1.1.4
+    - vsCnr2 v1.0.1
+    - vsTTempSmooth v1.2.3
+    - xy-VSFilter + XySubFilter v3.2.0.808
+- Update Dual plugins
+    - f3kdb Neo vR9
+    - DFTTest Neo vR8
+    - MiniDeen vR11
+    - SVPflow v4.3.0.168
+    - VSFilterMod v5.2.6
+
+
+v2.17.0 (2023-05-20)
+====================
+
+- AVS: Add more frame rates to frame rate filter selections ([#995](/../../issues/995))
+- AVS: Fix missing function and package definitions for TransformsPack ([#1009](/../../issues/1009))
+- AVS: Prevent importing duplicates on dependencies
+- FFmpeg: Fix audio (and subtitle) cutting issues caused by ffmpeg upstream ([#997](/../../issues/997)) (thanks to sheik124 ([#1005](/../../pull/1005)))
+- NVEncC: Fix "--bref-mode" parameter options ([#1007](/../../issues/1007))
+- Rename encoder and category/group names
+- Update tools
+    - AOMEnc v3.6.0-564-gea9a06fd1
+    - AviSynth+ v3.7.3 r3982 Clang
+    - chapterEditor v1.37
+    - DGIndex v2.0.0.8
+    - eac3to v3.36
+    - FFmpeg v6.0 N-110665-g47430a3cb1-20230519
+    - MKVToolNix v76.0
+    - MP4Box v2.3-DEV-rev221-g200100727
+    - mpv.net v6.0.3.2 beta
+    - NVEncC v7.25
+    - QSVEncC v7.41
+    - Subtitle Edit v3.6.13
+- Update AviSynth+ plugins
+    - SMDegrain v4.4.0d
+    - Zs_RF_Shared v1.161
+- Update Dual plugins
+    - DGMPGDec v2.0.0.8
+
+
+v2.16.0 (2023-04-20)
+====================
+
+- NVEnc: Add "bicubic" option for "--vpp-resize algo" parameter
+- QSVEnc: Add "--tune" parameter
+- MP4Box: Can import EC3 files ([#999](/../../issues/999))
+- Update tools
+    - NVEncC v7.22
+    - QSVEncC v7.37
+- Update AviSynth+ plugins
+    - GradePack v9.0
+    - MasksPack v6.6
+    - TransformsPack v1.6
+
+
+v2.15.0 (2023-04-07)
+====================
+
+- Fix misleading language name fetch from path for subtitles ([#924](/../../issues/924))
+- Add .av1 to valid input file extensions for mkvmerge ([#982](/../../issues/982))
+- Add SharpenersPack functions for dependencies
+- NVEncC: Add "--vpp-nnedi" fields ([#962](/../../issues/962))
+- QSVEnc: Add "--output-depth" parameter ([#984](/../../issues/984))
+- VCEEnc: Add missing/new options for "--vpp-resize" ([#921](/../../issues/921))
+- VCEEnc: Add new "--no-deblock" parameter
+- x265: Add missing/new options for "--scenecut-aware-qp" ([#891](/../../issues/891)) (thanks to sheik124 ([#917](/../../pull/917)))
+- x265: Fix not working console help (thanks to sheik124 ([#917](/../../pull/917)))
+- Update tools
+    - ffmpeg n6.0-8-g18dde8d4cf-20230319
+    - MediaInfo v23.03
+    - NVEncC v7.21
+    - qaac v2.79
+        - libsndfile v1.2.0
+        - libFLAC v1.4.2
+    - QSVEncC v7.36
+    - VCEEncC v8.11
+- Update AviSynth+ plugins
+    - QTGMC v3.384s (2022-10-17)
+    - Sharpeners Pack v5.1
+
+
+v2.14.0 (2023-03-12)
+====================
+
+- NVEnc: Add multiple new params
+- NVEnc: Add missing/new options for "--vpp-resize" ([#921](/../../issues/921)), ([#964](/../../issues/964))
+- VCEEnc: Add multiple new params
+- x265: Fixed missing option for "--display-window"
+- Fix AVS mClean not working properly due to Masktools update
+- Fix AVS QTGMC not working properly
+- Fix AVS SMDegrain not working properly due to missing dependencies ([#931](/../../issues/931))
+- Update tools
+    - AOMEnc v3.2.0-393-g402e264b9-x64-gcc11.3.0 Patman
+    - MediaInfo v22.12
+    - MKVToolNix v74.0
+    - MP4Box v2.1-DEV-rev79-gdf29bc8a0-x64-gcc11.3.0 Patman
+    - NVEnc v7.20
+    - QSVEnc v7.35
+    - Rav1e v0.5.0-(p20220426-4-gb5c76736)-x64-gcc11.3.0 Patman
+    - SvtAv1EncApp v1.0.0-4-g879ba80a-x64-msvc1931 Patman
+    - VCEEnc v8.10
+- Update AviSynth+ plugins
+    - ExTools v10.0
+    - ModPlus v2020-06-26
+    - Resizers Functions Pack v11.4
+    - Sharpeners Pack v5.0
+    - SMDegrain v4.0.0.d
+- Update Dual plugins
+    - DGMPGDec v2.0.0.7 (replace wrong version in v2.13.0)
+    - ffms2 v3.0.1.0 1329+20 ad42af1 StvG
+
 
 v2.13.0 (2022-05-10)
 ====================
@@ -49,8 +705,6 @@ v2.13.0 (2022-05-10)
   - DGMPGDec v2.0.0.7
   - ffms2 v3.0.1.0 1325+16 6ad7738 StvG
   - L-SMASH-Works v20220505
-- Update VapourSynth plugins
-  - ...
 
 
 v2.12.0 (2022-04-19)

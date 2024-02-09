@@ -71,11 +71,7 @@ Public Class Proc
             Return ProjectValue
         End Get
         Set(value As Project)
-            If value Is Nothing Then
-                ProjectValue = p
-            Else
-                ProjectValue = value
-            End If
+            ProjectValue = If(value, p)
         End Set
     End Property
 
@@ -92,7 +88,7 @@ Public Class Proc
 
     ReadOnly Property Title As String
         Get
-            If Not Package Is Nothing Then
+            If Package IsNot Nothing Then
                 Return Package.Name
             End If
 
@@ -123,18 +119,18 @@ Public Class Proc
 
         If commands.Contains("xvid_encraw") Then
             Return {"key=", "frames("}
-        ElseIf commands.Contains("x264") OrElse commands.Contains("x265") Then
-            Return {"%]"}
-        ElseIf commands.Contains("nvenc") Then
-            Return {"frames: "}
+        ElseIf commands.Contains("ffmpeg") Then
+            Return {"frame=", "size="}
+        ElseIf commands.Contains("eac3to") Then
+            Return {"process: ", "analyze: "}
         ElseIf commands.Contains("qaac") Then
             Return {", ETA ", "x)", "Optimizing..."}
         ElseIf commands.Contains("fdkaac") Then
             Return {"%]", "x)"}
-        ElseIf commands.Contains("eac3to") Then
-            Return {"process: ", "analyze: "}
-        ElseIf commands.Contains("ffmpeg") Then
-            Return {"frame=", "size="}
+        ElseIf commands.Contains("nvenc") Then
+            Return {"frames: "}
+        ElseIf commands.Contains("x264") OrElse commands.Contains("x265") Then
+            Return {"%]"}
         Else
             Return {" [ETA ", ", eta ", "frames: ", "Maximum Gain Found",
                 "transcoding ...", "process: ", "analyze: "}
@@ -146,11 +142,7 @@ Public Class Proc
             Return Process.StartInfo.FileName
         End Get
         Set(Value As String)
-            If Value?.Contains("%") Then
-                Process.StartInfo.FileName = Environment.ExpandEnvironmentVariables(Value)
-            Else
-                Process.StartInfo.FileName = Value
-            End If
+            Process.StartInfo.FileName = If(Value?.Contains("%"), Environment.ExpandEnvironmentVariables(Value), Value)
         End Set
     End Property
 
@@ -278,7 +270,7 @@ Public Class Proc
                 ProcController.Start(Me)
             End If
 
-            If Not LogItems Is Nothing Then
+            If LogItems IsNot Nothing Then
                 For Each line In LogItems
                     Log.WriteLine(line)
                 Next
@@ -339,7 +331,7 @@ Public Class Proc
                     Throw New SkipException
                 End If
 
-                If ExitCode > 0 AndAlso Not AllowedExitCodes.ContainsEx(ExitCode) Then
+                If ExitCode <> 0 AndAlso Not AllowedExitCodes.ContainsEx(ExitCode) Then
                     Dim sb = New StringBuilder()
                     sb.Append($"{Header} returned exit code: {ExitCode} (0x{ExitCode:X})")
 
@@ -361,13 +353,8 @@ Public Class Proc
             Throw e
         End Try
 
-        If Abort Then
-            Throw New AbortException
-        End If
-
-        If Skip Then
-            Throw New SkipException
-        End If
+        If Abort Then Throw New AbortException
+        If Skip Then Throw New SkipException
     End Sub
 
     Private DisposedValue As Boolean = False
@@ -450,15 +437,15 @@ Public Class Proc
             Return ("", False)
         End If
 
-        If Not TrimChars Is Nothing Then
+        If TrimChars IsNot Nothing Then
             value = value.Trim(TrimChars)
         End If
 
-        If SkipString <> "" AndAlso value.Contains(SkipString) Then
+        If Not String.IsNullOrWhiteSpace(SkipString) AndAlso value.Contains(SkipString) Then
             Return (value, True)
         End If
 
-        If Not SkipStrings Is Nothing Then
+        If SkipStrings IsNot Nothing Then
             For Each i In SkipStrings
                 If value.Contains(i) Then
                     Return (value, True)

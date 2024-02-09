@@ -1,4 +1,5 @@
 ﻿
+Imports System.Globalization
 Imports System.Runtime.InteropServices
 Imports System.Text.RegularExpressions
 Imports System.Threading
@@ -14,12 +15,22 @@ Public Class ProcController
     Private ReadOnly CustomProgressInfoSeparator As String = ", "
     Private UseFirstExpression As Boolean = True
     Private FailCounter As Integer = 0
+    Private _projectScriptFrameRate As Double = -1.0
+    Private _lastHighlightedText As String = ""
 
     Property Proc As Proc
     Property LogTextBox As New RichTextBoxEx
     Property ProgressBar As New LabelProgressBar
     Property ProcForm As ProcessingForm
     Property Button As New ButtonEx
+    ReadOnly Property ProjectScriptFrameRate As Double
+        Get
+            If _projectScriptFrameRate < 0 Then
+                _projectScriptFrameRate = If(Proc?.Project?.Script Is Nothing, 0.0, Proc.Project.Script.GetFramerate())
+            End If
+            Return _projectScriptFrameRate
+        End Get
+    End Property
 
     Shared Property Procs As New List(Of ProcController)
     Shared Property Aborted As Boolean
@@ -56,7 +67,7 @@ Public Class ProcController
         LogTextBox.ReadOnly = True
         LogTextBox.WordWrap = True
         LogTextBox.Font = g.GetCodeFont(9)
-        AddHandler LogTextBox.AfterThemeApplied, AddressOf HighlightLog
+        AddHandler LogTextBox.AfterThemeApplied, AddressOf SetAndHighlightLog
 
         ProcForm.pnLogHost.Controls.Add(LogTextBox)
         ProcForm.pnStatusHost.Controls.Add(ProgressBar)
@@ -80,9 +91,7 @@ Public Class ProcController
     End Sub
 
     Sub ApplyTheme(theme As Theme)
-        If DesignHelp.IsDesignMode Then
-            Exit Sub
-        End If
+        If DesignHelp.IsDesignMode Then Exit Sub
 
         If Proc.IsSilent Then
             Button.BackColor = theme.ProcessingForm.ProcessButtonBackColor
@@ -94,15 +103,10 @@ Public Class ProcController
     End Sub
 
     Sub DataReceived(value As String)
-        If value = "" Then
-            Exit Sub
-        End If
+        If value = "" Then Exit Sub
 
         Dim ret = Proc.ProcessData(value)
-
-        If ret.Data = "" Then
-            Exit Sub
-        End If
+        If ret.Data = "" Then Exit Sub
 
         If ret.Skip Then
             If Proc.IntegerFrameOutput AndAlso Proc.FrameCount > 0 AndAlso ret.Data.IsInt Then
@@ -124,131 +128,166 @@ Public Class ProcController
     End Sub
 
     Sub LogHandler()
-        'LogTextBox.BlockPaint = True
-        LogTextBox.Text = Proc.Log.ToString
-        HighlightLog(ThemeManager.CurrentTheme)
-        'LogTextBox.BlockPaint = False
+        SetAndHighlightLog(Proc.Log.ToString(), ThemeManager.CurrentTheme)
     End Sub
 
-    Public Sub HighlightLog(theme As Theme)
-        If Proc.IsSilent Then
+    Public Sub SetAndHighlightLog(text As String, theme As Theme)
+        If Proc.IsSilent Then Exit Sub
+
+        If text Is Nothing Then text = LogTextBox.Text
+        If theme Is Nothing Then theme = ThemeManager.CurrentTheme
+
+        If text = "" OrElse Not s.OutputHighlighting Then
+            LogTextBox.Text = text
+            LogTextBox.BlockPaint = False
+            _lastHighlightedText = ""
             Exit Sub
         End If
 
-        If Not s.OutputHighlighting Then
-            LogTextBox.ClearAllFormatting()
-            Return
-        End If
+        If _lastHighlightedText = text Then Exit Sub
+        _lastHighlightedText = text
 
-        If theme Is Nothing Then theme = ThemeManager.CurrentTheme
+        'If LogTextBox.BlockPaint Then Exit Sub
 
+        Dim format = Sub(index As Integer, length As Integer, backColor As ColorHSL, foreColor As ColorHSL, fontStyles() As FontStyle)
+                         LogTextBox.Select(index, length)
+                         LogTextBox.SelectionBackColor = backColor
+                         LogTextBox.SelectionColor = foreColor
+
+                         If fontStyles?.Length > 0 Then
+                             LogTextBox.SelectionFont = New Font(LogTextBox.Font, fontStyles.Aggregate(LogTextBox.Font.Style, Function(a, n) a Or n))
+                         End If
+                     End Sub
+
+        Dim sw = If(g.IsDevelopmentPC(), Stopwatch.StartNew(), Nothing)
         LogTextBox.BlockPaint = True
+        LogTextBox.SuspendLayout()
+
         Try
             Dim oh = theme.ProcessingForm.OutputHighlighting
             Dim matches As MatchCollection
             Dim help As Integer
-            Dim IsX264 = Proc.Package Is Package.x264
-            Dim IsX265 = Proc.Package Is Package.x265
+            Dim duplicate As String
+            Dim isX264 = Proc.Package Is Package.x264
+            Dim isX265 = Proc.Package Is Package.x265
+            Dim isSvtAv1 = Proc.Package Is Package.SvtAv1EncApp
 
-            If IsX265 Then
+            LogTextBox.Text = text
+
+            matches = Regex.Matches(LogTextBox.Text, "(?<=\n)----------.*----------(?=\n)", RegexOptions.IgnoreCase)
+            For Each m As Match In matches
+                format(m.Index, m.Length, oh.HeaderBackColor, oh.HeaderForeColor, oh.HeaderFontStyles)
+            Next
+
+            matches = Regex.Matches(LogTextBox.Text, "(?<=----------\n\n).*(?=\n\n)", RegexOptions.IgnoreCase)
+            For Each m As Match In matches
+                format(m.Index, m.Length, oh.EncoderTitleBackColor, oh.EncoderTitleForeColor, oh.EncoderTitleFontStyles)
+            Next
+
+            If isX265 OrElse isSvtAv1 Then
                 help = 1
-                matches = Regex.Matches(LogTextBox.Text, "(?<=\n)x265\s\[info\]:\s(.+\s|tools):\s.+", RegexOptions.IgnoreCase)
+                matches = Regex.Matches(LogTextBox.Text, "((?<=\n)x265\s\[info\]|SVT\s\[config\]):\s(.+\s:|.+\sprofile|tools)\s.+", RegexOptions.IgnoreCase)
                 For Each m As Match In matches
                     If help Mod 2 = 0 Then
-                        LogTextBox.SelectionFormat(m.Index, m.Length, oh.AlternateBackColor, oh.AlternateForeColor, oh.AlternateFontStyles)
+                        format(m.Index, m.Length, oh.AlternateBackColor, oh.AlternateForeColor, oh.AlternateFontStyles)
                     End If
                     help += 1
                 Next
             End If
 
-            If IsX265 OrElse IsX264 Then
-                matches = Regex.Matches(LogTextBox.Text, "(?<=\n)(x264|x265)(?=\s\[)", RegexOptions.IgnoreCase)
-                For Each m As Match In matches
-                    LogTextBox.SelectionFormat(m.Index, m.Length, oh.SourceBackColor.SetHue(205), oh.SourceForeColor)
-                Next
-            End If
-
-            matches = Regex.Matches(LogTextBox.Text, "(?<=\n)(avs\+|avs\s|vpy\s)(?=\s\[)", RegexOptions.IgnoreCase)
+            matches = Regex.Matches(LogTextBox.Text, "(?<=\n)(x264|x265|svt|avs2pipemod|vspipe|y4m|vvenc|vvencFFapp)(?=\s*\[)", RegexOptions.IgnoreCase)
             For Each m As Match In matches
-                LogTextBox.SelectionFormat(m.Index, m.Length, oh.SourceBackColor.SetHue(300), oh.SourceForeColor)
+                format(m.Index, m.Length, oh.SourceBackColor.SetHue(205), oh.SourceForeColor, Nothing)
             Next
 
-            matches = Regex.Matches(LogTextBox.Text, "(?<=\n)(raw\s)(?=\s\[)", RegexOptions.IgnoreCase)
+            matches = Regex.Matches(LogTextBox.Text, "(?<=\n)(avs\+|avs|vpy)(?=\s+\[)", RegexOptions.IgnoreCase)
             For Each m As Match In matches
-                LogTextBox.SelectionFormat(m.Index, m.Length, oh.SourceBackColor.SetHue(175), oh.SourceForeColor)
+                format(m.Index, m.Length, oh.SourceBackColor.SetHue(300), oh.SourceForeColor, Nothing)
             Next
 
-            matches = Regex.Matches(LogTextBox.Text, "(?<=\n.*\s\[)(warn(?:ing)?)\]:\s(.+)", RegexOptions.IgnoreCase)
+            matches = Regex.Matches(LogTextBox.Text, "(?<=\n)(raw)(?=\s+\[)", RegexOptions.IgnoreCase)
             For Each m As Match In matches
-                LogTextBox.SelectionFormat(m.Groups(1).Index, m.Groups(1).Length, oh.WarningLabelBackColor, oh.WarningLabelForeColor, oh.WarningLabelFontStyles)
-                LogTextBox.SelectionFormat(m.Groups(2).Index, m.Groups(2).Length, oh.WarningTextBackColor, oh.WarningTextForeColor, oh.WarningTextFontStyles)
+                format(m.Index, m.Length, oh.SourceBackColor.SetHue(175), oh.SourceForeColor, Nothing)
             Next
 
-            matches = Regex.Matches(LogTextBox.Text, "(?<=\n.*\s\[)info(?=\]:\s)", RegexOptions.IgnoreCase)
+            matches = Regex.Matches(LogTextBox.Text, "(?<=\n.*(?:\s|svt|pipe|mod|enc|app)\[)(warn(?:ing)?)\]:\s(.+)", RegexOptions.IgnoreCase)
             For Each m As Match In matches
-                LogTextBox.SelectionFormat(m.Index, m.Length, oh.InfoLabelBackColor, oh.InfoLabelForeColor)
+                format(m.Groups(1).Index, m.Groups(1).Length, oh.WarningLabelBackColor, oh.WarningLabelForeColor, oh.WarningLabelFontStyles)
+                format(m.Groups(2).Index, m.Groups(2).Length, oh.WarningTextBackColor, oh.WarningTextForeColor, oh.WarningTextFontStyles)
             Next
 
-            matches = Regex.Matches(LogTextBox.Text, "(?<=\s|^)(--\w[^\s=]*|-[a-z](?=[\s=]))(?:[\s=]((?!--|-[a-z]\s)[^""\s]+|""[^""\n]*"")?)?", RegexOptions.IgnoreCase)
+            matches = Regex.Matches(LogTextBox.Text, "(?<=\n.*(?:\s|svt|pipe|mod|enc|app)\[)info|verbose(?=\]:\s)", RegexOptions.IgnoreCase)
             For Each m As Match In matches
-                LogTextBox.SelectionFormat(m.Groups(1).Index, m.Groups(1).Length, oh.ParameterBackColor, oh.ParameterForeColor, oh.ParameterFontStyles)
+                format(m.Index, m.Length, oh.InfoLabelBackColor, oh.InfoLabelForeColor, Nothing)
+            Next
+
+            matches = Regex.Matches(LogTextBox.Text, "(?<=\s|^)(--\w[^\s=]*|-[^-\s]+(?=[\s=]))(?:[\s=]((?!--|-[\S]+\s)[^""\s]+|""[^""\n]*"")?)?", RegexOptions.IgnoreCase)
+            For Each m As Match In matches
+                format(m.Groups(1).Index, m.Groups(1).Length, oh.ParameterBackColor, oh.ParameterForeColor, oh.ParameterFontStyles)
                 If m.Groups.Count > 2 Then
-                    LogTextBox.SelectionFormat(m.Groups(2).Index, m.Groups(2).Length, oh.ParameterValueBackColor, oh.ParameterValueForeColor, oh.ParameterValueFontStyles)
+                    format(m.Groups(2).Index, m.Groups(2).Length, oh.ParameterValueBackColor, oh.ParameterValueForeColor, oh.ParameterValueFontStyles)
                 End If
             Next
 
             matches = Regex.Matches(LogTextBox.Text, "([A-Z]:\\[\w\\]+\.[eE][xX][eE])|(""[A-Z]:\\[\w\s\\]+\.[eE][xX][eE]"")")
             For Each m As Match In matches
-                LogTextBox.SelectionFormat(m.Index, m.Length, oh.ExeFileBackColor, oh.ExeFileForeColor, oh.ExeFileFontStyles)
+                format(m.Index, m.Length, oh.ExeFileBackColor, oh.ExeFileForeColor, oh.ExeFileFontStyles)
             Next
 
             matches = Regex.Matches(LogTextBox.Text, "(""[A-Z]:\\[^\a\b\e\f\n\r\t\v""]+\.(json)"")|((?<!"")[A-Z]:\\[\S\\]+\.(json)(?!""))", RegexOptions.IgnoreCase)
             For Each m As Match In matches
-                LogTextBox.SelectionFormat(m.Index, m.Length, oh.MetadataFileBackColor, oh.MetadataFileForeColor, oh.MetadataFileFontStyles)
+                format(m.Index, m.Length, oh.MetadataFileBackColor, oh.MetadataFileForeColor, oh.MetadataFileFontStyles)
             Next
 
-            matches = Regex.Matches(LogTextBox.Text, "(""[A-Z]:\\[^\a\b\e\f\n\r\t\v""]+\.(avc|h264|h265|hevc|mkv|mp4)"")|((?<!"")[A-Z]:\\[\S\\]+\.(avc|h264|h265|hevc|mkv|mp4)(?!""))", RegexOptions.IgnoreCase)
+            duplicate = FileTypes.Video.Union(FileTypes.Audio).Union(FileTypes.SubtitleExludingContainers).Select(Function(x) Regex.Escape(x)).Join("|")
+            matches = Regex.Matches(LogTextBox.Text, $"(""[A-Z]:\\[^\a\b\e\f\n\r\t\v""]+\.({duplicate})"")|((?<!"")[A-Z]:\\[\S\\]+\.({duplicate})(?!""))", RegexOptions.IgnoreCase)
             For Each m As Match In matches
-                LogTextBox.SelectionFormat(m.Index, m.Length, oh.MediaFileBackColor, oh.MediaFileForeColor, oh.MediaFileFontStyles)
+                format(m.Index, m.Length, oh.MediaFileBackColor, oh.MediaFileForeColor, oh.MediaFileFontStyles)
             Next
 
             matches = Regex.Matches(LogTextBox.Text, "(""[A-Z]:\\[^\a\b\e\f\n\r\t\v""]+\.(avs|dll|vpy)"")|((?<!"")[A-Z]:\\[\S\\]+\.(avs|dll|vpy)(?!""))", RegexOptions.IgnoreCase)
             For Each m As Match In matches
-                LogTextBox.SelectionFormat(m.Index, m.Length, oh.ScriptFileBackColor, oh.ScriptFileForeColor, oh.ScriptFileFontStyles)
+                format(m.Index, m.Length, oh.ScriptFileBackColor, oh.ScriptFileForeColor, oh.ScriptFileFontStyles)
             Next
 
             matches = Regex.Matches(LogTextBox.Text, "(?<=\s)frames\s(\d+)\s-\s(\d+)\sof\s(\d+)", RegexOptions.IgnoreCase)
             For Each m As Match In matches
                 If m.Groups(1).Value.ToInt() > 0 OrElse m.Groups(2).Value.ToInt() + 1 < m.Groups(3).Value.ToInt() Then
-                    LogTextBox.SelectionFormat(m.Index, m.Length, oh.FramesCuttedBackColor, oh.FramesCuttedForeColor, oh.FramesCuttedFontStyles)
+                    format(m.Index, m.Length, oh.FramesCuttedBackColor, oh.FramesCuttedForeColor, oh.FramesCuttedFontStyles)
                     For i = 1 To m.Groups.Count - 1
-                        LogTextBox.SelectionFormat(m.Groups(i).Index, m.Groups(i).Length, oh.FramesCuttedNumberBackColor, oh.FramesCuttedNumberForeColor, oh.FramesCuttedNumberFontStyles)
+                        format(m.Groups(i).Index, m.Groups(i).Length, oh.FramesCuttedNumberBackColor, oh.FramesCuttedNumberForeColor, oh.FramesCuttedNumberFontStyles)
                     Next
                 Else
-                    LogTextBox.SelectionFormat(m.Index, m.Length, oh.FramesBackColor, oh.FramesForeColor, oh.FramesFontStyles)
+                    format(m.Index, m.Length, oh.FramesBackColor, oh.FramesForeColor, oh.FramesFontStyles)
                 End If
             Next
 
             matches = Regex.Matches(LogTextBox.Text, "(?<=\]:\s)(avisynth|vapoursynth).*\d+.*", RegexOptions.IgnoreCase)
             For Each m As Match In matches
-                LogTextBox.SelectionFormat(m.Index, m.Length, oh.FrameServerBackColor, oh.FrameServerForeColor, oh.FrameServerFontStyles)
+                format(m.Index, m.Length, oh.FrameServerBackColor, oh.FrameServerForeColor, oh.FrameServerFontStyles)
             Next
 
-            If IsX265 OrElse IsX264 Then
-                matches = Regex.Matches(LogTextBox.Text, "(?<=\]:\s).*encoder(?:\D*?([^\d\s]*\d+\S*\d[^\d\s]*))(?:.*(djatom|patman|asuna))?.*(?=\n)", RegexOptions.IgnoreCase)
-                For Each m As Match In matches
-                    LogTextBox.SelectionFormat(m.Index, m.Length, oh.EncoderBackColor, oh.EncoderForeColor, oh.EncoderFontStyles)
-                    LogTextBox.SelectionFormat(m.Groups(1).Index, m.Groups(1).Length, oh.EncoderBackColor, oh.EncoderForeColor.AddSaturation(0.1).AddLuminance(0.175), oh.EncoderFontStyles.Union({FontStyle.Bold}).ToArray)
-                    If m.Groups.Count > 2 Then
-                        LogTextBox.SelectionFormat(m.Groups(2).Index, m.Groups(2).Length, oh.EncoderBackColor, oh.EncoderForeColor.AddSaturation(0.1).AddLuminance(0.175), oh.EncoderFontStyles.Union({FontStyle.Bold}).ToArray)
-                    End If
-                Next
-            End If
+            matches = Regex.Matches(LogTextBox.Text, "(?<=\]:\s)[^:]*encoder(?:\D*?([^\d\s]*\d+\S*\d[^\d\s]*))(?:.*(djatom|patman|jpsdr))?.*(?=\n)", RegexOptions.IgnoreCase)
+            For Each m As Match In matches
+                format(m.Index, m.Length, oh.EncoderBackColor, oh.EncoderForeColor, oh.EncoderFontStyles)
+                format(m.Groups(1).Index, m.Groups(1).Length, oh.EncoderBackColor, oh.EncoderForeColor.AddSaturation(0.1).AddLuminance(0.175), oh.EncoderFontStyles.Union({FontStyle.Bold}).ToArray)
+                If m.Groups.Count > 2 Then
+                    format(m.Groups(2).Index, m.Groups(2).Length, oh.EncoderBackColor, oh.EncoderForeColor.AddSaturation(0.1).AddLuminance(0.175), oh.EncoderFontStyles.Union({FontStyle.Bold}).ToArray)
+                End If
+            Next
 
         Catch ex As Exception
         Finally
             LogTextBox.Select(0, 0)
             LogTextBox.BlockPaint = False
+            LogTextBox.ResumeLayout()
+
+            If sw IsNot Nothing AndAlso ProcForm IsNot Nothing Then
+                sw.Stop()
+                ProcForm.Text = $"Output Highlighting took {sw.ElapsedMilliseconds}ms"
+            End If
+
+            SetAndHighlightLog(_lastHighlightedText, theme)
         End Try
     End Sub
 
@@ -260,14 +299,12 @@ Public Class ProcController
     Shared LastProgress As Double
 
     Sub SetProgressText(value As String)
-        If Proc.IsSilent Then
-            Exit Sub
-        End If
+        If Proc.IsSilent Then Exit Sub
 
         value = value.Trim()
 
         If s.ProgressReformatting Then
-            If FailCounter < 16 Then
+            If FailCounter < 32 Then
                 Dim pattern As String
                 Dim match As Match
 
@@ -278,7 +315,16 @@ Public Class ProcController
                         match = Regex.Match(value, pattern, RegexOptions.IgnoreCase)
 
                         If match.Success Then
-                            value = $"[{match.Groups(1).Value,2}{match.Groups(2).Value}%] {match.Groups(3).Value.PadLeft(match.Groups(4).Value.Length)}/{match.Groups(4).Value} frames @ {match.Groups(5).Value}{match.Groups(6).Value} fps{CustomProgressInfoSeparator}{match.Groups(7).Value,4} {match.Groups(9).Value}{CustomProgressInfoSeparator}{match.Groups(12).Value}{match.Groups(13).Value} {match.Groups(14).Value} ({match.Groups(15).Value} {match.Groups(17).Value}){CustomProgressInfoSeparator}{match.Groups(10).Value} (-{match.Groups(11).Value})"
+                            Dim fps = 0.0
+                            Dim fpsParse = Double.TryParse(match.Groups(5).Value + match.Groups(6).Value, NumberStyles.Float, CultureInfo.InvariantCulture, fps)
+                            Dim speedString = ""
+
+                            If fpsParse AndAlso ProjectScriptFrameRate > 0 Then
+                                Dim speed = fps / ProjectScriptFrameRate
+                                speedString = $" ({speed.ToString("0.00", CultureInfo.InvariantCulture)}x)"
+                            End If
+
+                            value = $"[{match.Groups(1).Value,2}{match.Groups(2).Value}%] {match.Groups(3).Value.PadLeft(match.Groups(4).Value.Length)}/{match.Groups(4).Value} frames @ {match.Groups(5).Value}{match.Groups(6).Value} fps{speedString}{CustomProgressInfoSeparator}{match.Groups(7).Value,4} {match.Groups(9).Value}{CustomProgressInfoSeparator}{match.Groups(12).Value}{match.Groups(13).Value} {match.Groups(14).Value} ({match.Groups(15).Value} {match.Groups(17).Value}){CustomProgressInfoSeparator}{match.Groups(10).Value} (-{match.Groups(11).Value})"
                         Else
                             UseFirstExpression = Not UseFirstExpression
                             FailCounter += 1
@@ -289,7 +335,16 @@ Public Class ProcController
                         match = Regex.Match(value, pattern, RegexOptions.IgnoreCase)
 
                         If match.Success Then
-                            value = $"[{match.Groups(2).Value,2}.{match.Groups(3).Value}%] {match.Groups(5).Value.PadLeft(match.Groups(6).Value.Length)}/{match.Groups(6).Value} frames @ {match.Groups(8).Value}.{match.Groups(9).Value} fps{CustomProgressInfoSeparator}{match.Groups(11).Value,4} kb/s{CustomProgressInfoSeparator}{match.Groups(16).Value} {match.Groups(18).Value} ({match.Groups(20).Value}.{match.Groups(21).Value} {match.Groups(22).Value}){CustomProgressInfoSeparator}{match.Groups(13).Value} (-{match.Groups(14).Value})"
+                            Dim fps = 0.0
+                            Dim fpsParse = Double.TryParse($"{match.Groups(8).Value}.{match.Groups(9).Value}", NumberStyles.Float, CultureInfo.InvariantCulture, fps)
+                            Dim speedString = ""
+
+                            If fpsParse AndAlso ProjectScriptFrameRate > 0 Then
+                                Dim speed = fps / ProjectScriptFrameRate
+                                speedString = $" ({speed.ToString("0.00", CultureInfo.InvariantCulture)}x)"
+                            End If
+
+                            value = $"[{match.Groups(2).Value,2}.{match.Groups(3).Value}%] {match.Groups(5).Value.PadLeft(match.Groups(6).Value.Length)}/{match.Groups(6).Value} frames @ {match.Groups(8).Value}.{match.Groups(9).Value} fps{speedString}{CustomProgressInfoSeparator}{match.Groups(11).Value,4} kb/s{CustomProgressInfoSeparator}{match.Groups(16).Value} {match.Groups(18).Value} ({match.Groups(20).Value}.{match.Groups(21).Value} {match.Groups(22).Value}){CustomProgressInfoSeparator}{match.Groups(13).Value} (-{match.Groups(14).Value})"
                         Else
                             UseFirstExpression = Not UseFirstExpression
                             FailCounter += 1
@@ -302,7 +357,16 @@ Public Class ProcController
                         match = Regex.Match(value, pattern, RegexOptions.IgnoreCase)
 
                         If match.Success Then
-                            value = $"[{match.Groups(1).Value,2}{match.Groups(2).Value}%] {match.Groups(3).Value.PadLeft(match.Groups(4).Value.Length)}/{match.Groups(4).Value} frames @ {match.Groups(5).Value}{match.Groups(6).Value} fps{CustomProgressInfoSeparator}{match.Groups(7).Value,4} {match.Groups(9).Value}{CustomProgressInfoSeparator}{match.Groups(12).Value}{match.Groups(13).Value} {match.Groups(14).Value} ({match.Groups(15).Value} {match.Groups(17).Value}){CustomProgressInfoSeparator}{match.Groups(10).Value} (-{match.Groups(11).Value})"
+                            Dim fps = 0.0
+                            Dim fpsParse = Double.TryParse(match.Groups(5).Value + match.Groups(6).Value, NumberStyles.Float, CultureInfo.InvariantCulture, fps)
+                            Dim speedString = ""
+
+                            If fpsParse AndAlso ProjectScriptFrameRate > 0 Then
+                                Dim speed = fps / ProjectScriptFrameRate
+                                speedString = $" ({speed.ToString("0.00", CultureInfo.InvariantCulture)}x)"
+                            End If
+
+                            value = $"[{match.Groups(1).Value,2}{match.Groups(2).Value}%] {match.Groups(3).Value.PadLeft(match.Groups(4).Value.Length)}/{match.Groups(4).Value} frames @ {match.Groups(5).Value}{match.Groups(6).Value} fps{speedString}{CustomProgressInfoSeparator}{match.Groups(7).Value,4} {match.Groups(9).Value}{CustomProgressInfoSeparator}{match.Groups(12).Value}{match.Groups(13).Value} {match.Groups(14).Value} ({match.Groups(15).Value} {match.Groups(17).Value}){CustomProgressInfoSeparator}{match.Groups(10).Value} (-{match.Groups(11).Value})"
                         Else
                             UseFirstExpression = Not UseFirstExpression
                             FailCounter += 1
@@ -313,11 +377,49 @@ Public Class ProcController
                         match = Regex.Match(value, pattern, RegexOptions.IgnoreCase)
 
                         If match.Success Then
-                            value = $"[{match.Groups(2).Value,2}.{match.Groups(3).Value}%] {match.Groups(5).Value.PadLeft(match.Groups(7).Value.Length)}{match.Groups(6).Value}/{match.Groups(7).Value} frames @ {match.Groups(10).Value}.{match.Groups(11).Value} fps{CustomProgressInfoSeparator}{match.Groups(14).Value,4} {match.Groups(16).Value}{CustomProgressInfoSeparator}{match.Groups(19).Value} {match.Groups(21).Value} ({match.Groups(22).Value} {match.Groups(24).Value}){CustomProgressInfoSeparator}{match.Groups(17).Value} (-{match.Groups(18).Value})"
+                            Dim fps = 0.0
+                            Dim fpsParse = Double.TryParse($"{match.Groups(10).Value}.{match.Groups(11).Value}", NumberStyles.Float, CultureInfo.InvariantCulture, fps)
+                            Dim speedString = ""
+
+                            If fpsParse AndAlso ProjectScriptFrameRate > 0 Then
+                                Dim speed = fps / ProjectScriptFrameRate
+                                speedString = $" ({speed.ToString("0.00", CultureInfo.InvariantCulture)}x)"
+                            End If
+
+                            value = $"[{match.Groups(2).Value,2}.{match.Groups(3).Value}%] {match.Groups(5).Value.PadLeft(match.Groups(7).Value.Length)}{match.Groups(6).Value}/{match.Groups(7).Value} frames @ {match.Groups(10).Value}.{match.Groups(11).Value} fps{speedString}{CustomProgressInfoSeparator}{match.Groups(14).Value,4} {match.Groups(16).Value}{CustomProgressInfoSeparator}{match.Groups(19).Value} {match.Groups(21).Value} ({match.Groups(22).Value} {match.Groups(24).Value}){CustomProgressInfoSeparator}{match.Groups(17).Value} (-{match.Groups(18).Value})"
                         Else
                             UseFirstExpression = Not UseFirstExpression
                             FailCounter += 1
                         End If
+                    End If
+                ElseIf Proc.Package Is Package.SvtAv1EncApp Then
+                    'Mod by Patman
+                    pattern = "^Encoding:\s+(\d+)/(\s*\d+)\sFrames\s@\s(\d+\.\d+)\sfps\s\|\s(\d+)\.\d+\skbps\s\|\sTime:\s(\d\d:\d\d:\d\d)\s\[(-?\d\d:\d\d:\d\d)\]\s\|\sSize:\s(-?\d+\.\d+)\s(.B)\s\[(-?\d+)\.\d+\s(.B)\]"
+                    match = Regex.Match(value, pattern, RegexOptions.IgnoreCase)
+
+                    If match.Success Then
+                        Dim frame = 0.0F
+                        Dim frameParse = Single.TryParse($"{match.Groups(1).Value}", NumberStyles.Float, CultureInfo.InvariantCulture, frame)
+                        Dim frames = 0.0F
+                        Dim framesParse = Single.TryParse($"{match.Groups(2).Value}", NumberStyles.Float, CultureInfo.InvariantCulture, frames)
+                        Dim percentString = "Encoding:"
+                        Dim fps = 0.0F
+                        Dim fpsParse = Single.TryParse($"{match.Groups(3).Value}", NumberStyles.Float, CultureInfo.InvariantCulture, fps)
+                        Dim speedString = ""
+
+                        If frameParse AndAlso framesParse Then
+                            Dim percent = frame / frames * 100
+                            percentString = $"[{percent.ToString("0.0", CultureInfo.InvariantCulture),4}%]"
+                        End If
+
+                        If fpsParse AndAlso ProjectScriptFrameRate > 0 Then
+                            Dim speed = fps / ProjectScriptFrameRate
+                            speedString = $" ({speed.ToString("0.00", CultureInfo.InvariantCulture)}x)"
+                        End If
+
+                        value = $"{percentString} {match.Groups(1).Value.PadLeft(match.Groups(2).Value.Length)}/{match.Groups(2).Value.Trim()} frames @ {match.Groups(3).Value} fps{speedString}{CustomProgressInfoSeparator}{match.Groups(4).Value,4} kb/s{CustomProgressInfoSeparator}{match.Groups(7).Value,5} {match.Groups(8).Value} ({match.Groups(9).Value} {match.Groups(10).Value}){CustomProgressInfoSeparator}{match.Groups(5).Value} ({match.Groups(6).Value})"
+                    Else
+                        FailCounter += 1
                     End If
                 End If
             End If
@@ -332,131 +434,48 @@ Public Class ProcController
             Exit Sub
         End If
 
-        If value.Contains("%") Then
-            value = value.Left("%")
+        Dim match As Match
+        Dim frame As Integer = 0
+        Dim frames As Integer = Proc.FrameCount
+        Dim progress As Single = -1
 
-            If value.Contains("[") Then
-                value = value.Right("[")
-            End If
+        match = Regex.Match(value, "(?:\s|^)\[?\s*(\d+(?:[.,]\d+)?)%\]?\s?", RegexOptions.IgnoreCase)
+        If match.Success Then
+            progress = match.Groups(1).Value.ToSingle()
+        Else
+            match = Regex.Match(value, "(\d+(?:[.,]\d+))\/100", RegexOptions.IgnoreCase)
+            If match.Success Then
+                progress = match.Groups(1).Value.ToSingle()
+            Else
+                match = Regex.Match(value, "frame(?:(?:=\s*)|\s+)(\d+)(?:\s|\/)", RegexOptions.IgnoreCase)
+                If match.Success Then
+                    frame = match.Groups(1).Value.ToInt()
+                Else
+                    match = Regex.Match(value, "\s(\d+)(?:\s?\/\s?(\d+))?\sframes", RegexOptions.IgnoreCase)
+                    If match.Success Then
+                        frame = match.Groups(1).Value.ToInt()
+                        frames = match.Groups(2).Value.ToInt()
+                    Else
 
-            If value.Contains(" ") Then
-                value = value.RightLast(" ")
-            End If
-
-            If value.IsDouble Then
-                Dim val = value.ToDouble
-
-                If LastProgress <> val Then
-                    ProcForm.Taskbar?.SetState(TaskbarStates.Normal)
-                    ProcForm.Taskbar?.SetValue(Math.Max(val, 1), 100)
-                    ProcForm.NotifyIcon.Text = val & "%"
-                    ProgressBar.Value = val
-                    LastProgress = val
-                End If
-
-                Exit Sub
-            End If
-        ElseIf Proc.Duration <> TimeSpan.Zero AndAlso value.Contains(" time=") Then
-            Dim tokens = value.Right(" time=").Left(" ").Split(":"c)
-
-            If tokens.Length = 3 Then
-                Dim ts As New TimeSpan(tokens(0).ToInt, tokens(1).ToInt, tokens(2).ToInt)
-                Dim val = 100 / Proc.Duration.TotalSeconds * ts.TotalSeconds
-
-                If LastProgress <> val Then
-                    ProcForm.Taskbar?.SetState(TaskbarStates.Normal)
-                    ProcForm.Taskbar?.SetValue(Math.Max(val, 1), 100)
-                    ProcForm.NotifyIcon.Text = val & "%"
-                    ProgressBar.Value = val
-                    LastProgress = val
-                End If
-
-                Exit Sub
-            End If
-        ElseIf Proc.FrameCount > 0 AndAlso value.Contains("frame=") AndAlso value.Contains("fps=") Then
-            Dim frameString = value.Left("fps=").Right("frame=")
-
-            If frameString.IsInt Then
-                Dim frame = frameString.ToInt
-
-                If frame < Proc.FrameCount Then
-                    Dim progressValue = CSng(frame / Proc.FrameCount * 100)
-
-                    If LastProgress <> progressValue Then
-                        ProcForm.Taskbar?.SetState(TaskbarStates.Normal)
-                        ProcForm.Taskbar?.SetValue(Math.Max(progressValue, 1), 100)
-                        ProcForm.NotifyIcon.Text = progressValue & "%"
-                        ProgressBar.Value = progressValue
-                        LastProgress = progressValue
                     End If
-
-                    Exit Sub
-                End If
-            End If
-        ElseIf value.Contains("/100)") Then
-            Dim percentString = value.Right("(").Left("/")
-
-            If percentString.IsInt Then
-                Dim percent = percentString.ToInt
-
-                If LastProgress <> percent Then
-                    ProcForm.Taskbar?.SetState(TaskbarStates.Normal)
-                    ProcForm.Taskbar?.SetValue(Math.Max(percent, 1), 100)
-                    ProcForm.NotifyIcon.Text = percent & "%"
-                    ProgressBar.Value = percent
-                    LastProgress = percent
-                End If
-
-                Exit Sub
-            End If
-        ElseIf Proc.Package Is Package.Rav1e AndAlso Proc.FrameCount > 0 AndAlso
-            value.StartsWith("encoded ") AndAlso value.Contains(" frames, ") Then
-
-            Dim left = value.Left(" frames, ")
-            Dim str = left.Right("encoded ")
-
-            If str.IsInt Then
-                Dim frame = str.ToInt
-
-                If frame < Proc.FrameCount Then
-                    Dim progressValue = CSng(frame / Proc.FrameCount * 100)
-
-                    If LastProgress <> progressValue Then
-                        ProcForm.Taskbar?.SetState(TaskbarStates.Normal)
-                        ProcForm.Taskbar?.SetValue(Math.Max(progressValue, 1), 100)
-                        ProcForm.NotifyIcon.Text = progressValue & "%"
-                        ProgressBar.Value = progressValue
-                        LastProgress = progressValue
-                    End If
-
-                    Exit Sub
-                End If
-            End If
-        ElseIf Proc.Package Is Package.AOMEnc AndAlso Proc.FrameCount > 0 AndAlso value.Contains(" frame ") Then
-            Dim right = value.Right(" frame ")
-            Dim left = right.Left("/").Trim
-
-            If left.IsInt Then
-                Dim frame = left.ToInt
-
-                If frame < Proc.FrameCount Then
-                    Dim progressValue = CSng(frame / Proc.FrameCount * 100)
-
-                    If LastProgress <> progressValue Then
-                        ProcForm.Taskbar?.SetState(TaskbarStates.Normal)
-                        ProcForm.Taskbar?.SetValue(Math.Max(progressValue, 1), 100)
-                        ProcForm.NotifyIcon.Text = progressValue & "%"
-                        ProgressBar.Value = progressValue
-                        LastProgress = progressValue
-                    End If
-
-                    Exit Sub
                 End If
             End If
         End If
 
-        If LastProgress <> 0 Then
-            ProcForm.NotifyIcon.Text = "StaxRip"
+        If frame < frames AndAlso progress < 0 Then
+            progress = CSng(frame / frames * 100)
+        End If
+
+        If progress >= 0 AndAlso LastProgress <> progress Then
+            ProcForm.Taskbar?.SetState(TaskbarStates.Normal)
+            ProcForm.Taskbar?.SetValue(Math.Max(progress, 1), 100)
+            ProcForm.NotifyIcon.Text = progress & "%"
+            ProgressBar.Value = progress
+            LastProgress = progress
+        End If
+
+        If progress < 0 Then
+            ProcForm.NotifyIcon.Text = g.DefaultCommands.GetApplicationDetails()
             ProcForm.Taskbar?.SetState(TaskbarStates.NoProgress)
             LastProgress = 0
         End If
@@ -483,7 +502,7 @@ Public Class ProcController
             s.OutputHighlighting = value
 
             For Each pc In Procs
-                pc.HighlightLog(theme)
+                pc.SetAndHighlightLog(Nothing, theme)
             Next
         End If
     End Sub
@@ -550,7 +569,7 @@ Public Class ProcController
         SyncLock Procs
             For Each pc In Procs
                 If Not pc.Proc.IsSilent Then
-                    Return pc.Proc.Process.PriorityClass
+                    Return pc.Proc.Process?.PriorityClass
                 End If
             Next
         End SyncLock
@@ -566,6 +585,8 @@ Public Class ProcController
     End Sub
 
     Sub Cleanup()
+        BlockActivation = True
+
         SyncLock Procs
             Procs.Remove(Me)
 
@@ -691,7 +712,7 @@ Public Class ProcController
         End SyncLock
 
         g.ProcForm.Invoke(Sub()
-                              If Not g.ProcForm.WindowState = FormWindowState.Minimized Then
+                              If Not g.ProcForm.WindowState = FormWindowState.Minimized OrElse Not BlockActivation Then
                                   g.ProcForm.Show()
                                   g.ProcForm.WindowState = FormWindowState.Normal
                                   g.ProcForm.Activate()
