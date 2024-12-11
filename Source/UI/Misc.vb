@@ -86,7 +86,19 @@ Namespace UI
             End If
         End Sub
 
-        Sub SetMinimumSize(w As Integer, h As Integer)
+        Protected Overrides Sub OnHandleCreated(e As EventArgs)
+            MyBase.OnHandleCreated(e)
+
+            If Not ThemeManager.CurrentTheme.UsesSystemColors Then
+                If Native.DwmSetWindowAttribute(Handle, 19, 1, 4) <> 0 Then Native.DwmSetWindowAttribute(Handle, 20, 1, 4)
+            End If
+        End Sub
+
+        Sub SetMaximumSize(w As Single, h As Single)
+            MaximumSize = New Size(CInt(Font.Height * w), CInt(Font.Height * h))
+        End Sub
+
+        Sub SetMinimumSize(w As Single, h As Single)
             MinimumSize = New Size(CInt(Font.Height * w), CInt(Font.Height * h))
         End Sub
 
@@ -141,7 +153,7 @@ Namespace UI
         Protected Overrides Sub OnFormClosing(args As FormClosingEventArgs)
             MyBase.OnFormClosing(args)
 
-            If Not s.WindowPositions Is Nothing Then
+            If s.WindowPositions IsNot Nothing Then
                 s.WindowPositions.Save(Me)
             End If
 

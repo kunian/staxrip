@@ -17,9 +17,7 @@ Module StringExtensions
 
     <Extension>
     Function TrimTrailingSeparator(instance As String) As String
-        If instance = "" Then
-            Return ""
-        End If
+        If instance = "" Then Return ""
 
         If instance.EndsWith(Separator) AndAlso Not instance.Length <= 3 Then
             Return instance.TrimEnd(Separator)
@@ -28,19 +26,19 @@ Module StringExtensions
         Return instance
     End Function
 
+    <Extension>
+    Function TrimQuotes(instance As String) As String
+        If instance = "" Then Return ""
+        If Not instance.StartsWith("""") OrElse Not instance.EndsWith("""") Then Return instance
+
+        Return instance.Trim(""""c)
+    End Function
+
     <Extension()>
     Function Parent(path As String) As String
-        If path = "" Then
-            Return ""
-        End If
+        If path = "" Then Return ""
 
-        Dim temp = TrimTrailingSeparator(path)
-
-        If temp.Contains(Separator) Then
-            path = temp.LeftLast(Separator) + Separator
-        End If
-
-        Return path
+        Return IO.Path.GetDirectoryName(path.TrimQuotes())
     End Function
 
     <Extension>
@@ -115,11 +113,28 @@ Module StringExtensions
 
     <Extension>
     Function IsValidFileName(instance As String) As Boolean
-        If instance = "" Then
-            Return False
-        End If
+        If instance = "" Then Return False
 
-        Dim chars = """*/:<>?\|"
+        Dim chars = Path.GetInvalidFileNameChars()
+
+        For Each i In instance
+            If chars.Contains(i) Then
+                Return False
+            End If
+
+            If Convert.ToInt32(i) < 32 Then
+                Return False
+            End If
+        Next
+
+        Return True
+    End Function
+
+    <Extension>
+    Function IsValidPath(instance As String) As Boolean
+        If instance = "" Then Return False
+
+        Dim chars = Path.GetInvalidPathChars()
 
         For Each i In instance
             If chars.Contains(i) Then
@@ -167,9 +182,7 @@ Module StringExtensions
     Function FileName(instance As String) As String
         If instance = "" Then Return ""
 
-        Dim index = instance.LastIndexOf(Path.DirectorySeparatorChar)
-
-        Return If(index > -1, instance.Substring(index + 1), instance)
+        Return Path.GetFileName(instance.TrimQuotes())
     End Function
 
     <Extension()>
@@ -191,9 +204,8 @@ Module StringExtensions
 
     <Extension()>
     Function Escape(instance As String) As String
-        If instance = "" Then
-            Return ""
-        End If
+        If instance = "" Then Return ""
+        If instance(0) = """" AndAlso instance(instance.Length - 1) = """" Then Return instance
 
         For Each i In " ;=~*$%()&"
             If instance.Contains(i) Then
@@ -207,6 +219,8 @@ Module StringExtensions
     <Extension()>
     Function ExistingParent(instance As String) As String
         Dim ret = instance.Parent
+
+        ' what sp
         If Not Directory.Exists(ret) Then ret = ret.Parent Else Return ret
         If Not Directory.Exists(ret) Then ret = ret.Parent Else Return ret
         If Not Directory.Exists(ret) Then ret = ret.Parent Else Return ret
@@ -217,13 +231,42 @@ Module StringExtensions
 
     <Extension()>
     Function FileExists(instance As String) As Boolean
-        Return File.Exists(instance)
+        If String.IsNullOrWhiteSpace(instance) Then Return False
+        Return File.Exists(instance.TrimQuotes())
+    End Function
+
+    <Extension()>
+    Function FileSize(instance As String) As Long
+        If String.IsNullOrWhiteSpace(instance) Then Return 0L
+        If Not instance.FileExists() Then Return 0L
+
+        Return New FileInfo(instance.TrimQuotes()).Length
+    End Function
+
+    <Extension()>
+    Function DirSize(instance As String) As Long
+        If String.IsNullOrWhiteSpace(instance) Then Return 0L
+        If Not instance.DirExists() Then Return 0L
+
+        Dim ret = 0L
+        Dim di = New DirectoryInfo(instance.TrimQuotes())
+        Dim files = di.GetFiles()
+
+        For Each f In files
+            ret += f.Length
+        Next
+
+        For Each d In di.GetDirectories()
+            ret += d.FullName.DirSize()
+        Next
+
+        Return ret
     End Function
 
     <Extension()>
     Function DirExists(instance As String) As Boolean
         If instance <> "" Then
-            Return Directory.Exists(instance)
+            Return Directory.Exists(instance.TrimQuotes())
         End If
     End Function
 
@@ -238,53 +281,32 @@ Module StringExtensions
     End Function
 
     Function GetExt(filepath As String, includeDot As Boolean) As String
-        If filepath = "" Then
-            Return ""
+        If filepath = "" Then Return ""
+
+        Dim ext = Path.GetExtension(filepath.TrimQuotes()).ToLowerInvariant()
+        If Not includeDot Then
+            ext = ext.TrimStart("."c)
         End If
-
-        Dim chars = filepath.ToCharArray()
-
-        For x = filepath.Length - 1 To 0 Step -1
-            If chars(x) = Separator Then
-                Return ""
-            End If
-
-            If chars(x) = "."c Then
-                Return filepath.Substring(x + If(includeDot, 0, 1)).ToLowerInvariant()
-            End If
-        Next
-
-        Return ""
+        Return ext
     End Function
 
     <Extension()>
     Function Base(instance As String) As String
-        If instance = "" Then
-            Return ""
-        End If
+        If instance = "" Then Return ""
 
-        Dim ret = instance
+        Dim ret = instance.TrimQuotes()
+        Dim index = ret.LastIndexOf(Path.DirectorySeparatorChar)
 
-        If ret.Contains(Separator) Then
-            ret = ret.RightLast(Separator)
-        End If
+        If Not ret.Contains(".") Then Return If(index < 0, ret, ret.Substring(index + 1))
 
-        If ret.Contains(".") Then
-            ret = ret.LeftLast(".")
-        End If
-
-        Return ret
+        Return Path.GetFileNameWithoutExtension(ret)
     End Function
 
     <Extension()>
     Function Dir(instance As String) As String
         If instance = "" Then Return ""
 
-        If instance.Contains("\") Then
-            instance = instance.LeftLast("\") + "\"
-        End If
-
-        Return instance
+        Return Path.GetDirectoryName(instance)
     End Function
 
     <Extension()>
@@ -312,7 +334,7 @@ Module StringExtensions
 
         Dim sb As New StringBuilder(GlobalClass.MAX_PATH)
         Native.GetShortPathName(instance.Dir, sb, sb.Capacity)
-        Dim ret = sb.ToString + instance.FileName
+        Dim ret = Path.Combine(sb.ToString, instance.FileName)
 
         If ret.Length <= GlobalClass.MAX_PATH Then
             Return ret
@@ -343,17 +365,22 @@ Module StringExtensions
 
     <Extension()>
     Function DirName(instance As String) As String
-        If instance = "" Then
-            Return ""
+        If instance = "" Then Return ""
+
+        If File.Exists(instance) Then
+            Return Path.GetFileName(Path.GetDirectoryName(instance))
+        ElseIf Directory.Exists(instance) Then
+            Return Path.GetFileName(instance)
+        ElseIf Path.GetFileName(instance).Contains(".") Then
+            Return Path.GetFileName(Path.GetDirectoryName(instance))
         End If
 
-        instance = TrimTrailingSeparator(instance)
-        Return instance.RightLast(Separator)
+        Return Path.GetFileName(Path.GetDirectoryName(instance))
     End Function
 
     <Extension()>
-    Function DirAndBase(path As String) As String
-        Return path.Dir + path.Base
+    Function DirAndBase(p As String) As String
+        Return Path.Combine(p.Dir, p.Base)
     End Function
 
     <Extension()>
@@ -371,25 +398,32 @@ Module StringExtensions
     End Function
 
     <Extension()>
-    Function EqualsAny(instance As String, ParamArray values As String()) As Boolean
-        If instance = "" OrElse values.NothingOrEmpty Then
-            Return False
+    Function EndsWithAny(instance As String, ParamArray any As String()) As Boolean
+        If instance <> "" AndAlso Not any.NothingOrEmpty Then
+            Return any.Any(Function(arg) instance.EndsWith(arg))
         End If
+    End Function
+
+    <Extension()>
+    Function StartsWithAny(instance As String, ParamArray any As String()) As Boolean
+        If instance <> "" AndAlso Not any.NothingOrEmpty Then
+            Return any.Any(Function(arg) instance.StartsWith(arg))
+        End If
+    End Function
+
+    <Extension()>
+    Function EqualsAny(instance As String, ParamArray values As String()) As Boolean
+        If instance = "" OrElse values.NothingOrEmpty Then Return False
 
         Return values.Contains(instance)
     End Function
 
     <Extension()>
     Function FixDir(instance As String) As String
-        If instance = "" Then
-            Return ""
-        End If
+        If instance = "" Then Return ""
+        If instance.Last() = Path.DirectorySeparatorChar AndAlso instance.SplitNoEmpty(Path.DirectorySeparatorChar).Length > 1 Then Return instance.Substring(0, instance.Length - 1)
 
-        While instance.EndsWith(Separator + Separator)
-            instance = instance.Substring(0, instance.Length - 1)
-        End While
-
-        Return If(instance.EndsWith(Separator), instance, instance + Separator)
+        Return instance
     End Function
 
     <Extension()>
@@ -521,18 +555,14 @@ Module StringExtensions
 
     <Extension()>
     Function ReadAllText(instance As String) As String
-        If Not File.Exists(instance) Then
-            Return ""
-        End If
+        If Not instance.FileExists Then Return ""
 
         Return File.ReadAllText(instance)
     End Function
 
     <Extension()>
     Function ReadAllTextDefault(instance As String) As String
-        If Not File.Exists(instance) Then
-            Return ""
-        End If
+        If Not instance.FileExists Then Return ""
 
         Return File.ReadAllText(instance, Encoding.Default)
     End Function
@@ -761,6 +791,25 @@ Module StringExtensions
     End Function
 
     <Extension()>
+    Function ReplaceTabsWithSpaces(value As String, Optional tabLength As Integer = 8) As String
+        If String.IsNullOrWhiteSpace(value) Then Return ""
+        If Not value.Contains(VB6.vbTab) Then Return value
+
+        Dim splitted = value.Split({VB6.vbTab}, StringSplitOptions.None)
+        Dim ret = New StringBuilder()
+
+        For Each split As String In splitted
+            If String.IsNullOrEmpty(split) Then
+                ret.Append(New String(" "c, tabLength))
+            Else
+                ret.Append(split & New String(" "c, tabLength - (split.RightLast(VB6.vbCrLf).Length Mod tabLength)))
+            End If
+        Next
+
+        Return ret.ToString()
+    End Function
+
+    <Extension()>
     Function Reverse(value As String) As String
         Dim chars = value.ToCharArray
         Array.Reverse(chars)
@@ -799,6 +848,11 @@ Module MiscExtensions
 
     <Extension()>
     Function ToInvariantString(value As Double, format As String) As String
+        Return value.ToString(format, CultureInfo.InvariantCulture)
+    End Function
+
+    <Extension()>
+    Function ToInvariantString(value As Single, format As String) As String
         Return value.ToString(format, CultureInfo.InvariantCulture)
     End Function
 
@@ -904,7 +958,7 @@ Module MiscExtensions
     Function NothingOrEmpty(objects As IEnumerable(Of Object)) As Boolean
         If objects?.Any() Then
             For Each obj In objects
-                If Not obj Is Nothing Then
+                If obj IsNot Nothing Then
                     Return False
                 End If
             Next
@@ -1047,10 +1101,10 @@ End Module
 Module RegistryKeyExtensions
     Function GetValue(Of T)(root As RegistryKey, path As String, name As String) As T
         Using key = root.OpenSubKey(path)
-            If Not key Is Nothing Then
+            If key IsNot Nothing Then
                 Dim value = key.GetValue(name)
 
-                If Not value Is Nothing Then
+                If value IsNot Nothing Then
                     Try
                         Return CType(value, T)
                     Catch
@@ -1078,7 +1132,7 @@ Module RegistryKeyExtensions
     <Extension()>
     Function GetKeyNames(root As RegistryKey, path As String) As String()
         Using subKey = root.OpenSubKey(path)
-            If Not subKey Is Nothing Then
+            If subKey IsNot Nothing Then
                 Return subKey.GetSubKeyNames
             End If
         End Using
@@ -1089,7 +1143,7 @@ Module RegistryKeyExtensions
     <Extension()>
     Function GetValueNames(root As RegistryKey, path As String) As String()
         Using subKey = root.OpenSubKey(path)
-            If Not subKey Is Nothing Then
+            If subKey IsNot Nothing Then
                 Return subKey.GetValueNames
             End If
         End Using
@@ -1099,11 +1153,7 @@ Module RegistryKeyExtensions
 
     <Extension()>
     Sub Write(root As RegistryKey, path As String, name As String, value As Object)
-        Dim subKey = root.OpenSubKey(path, True)
-
-        If subKey Is Nothing Then
-            subKey = root.CreateSubKey(path, RegistryKeyPermissionCheck.ReadWriteSubTree)
-        End If
+        Dim subKey = If(root.OpenSubKey(path, True), root.CreateSubKey(path, RegistryKeyPermissionCheck.ReadWriteSubTree))
 
         subKey.SetValue(name, value)
         subKey.Close()
@@ -1112,9 +1162,7 @@ Module RegistryKeyExtensions
     <Extension()>
     Sub DeleteValue(root As RegistryKey, path As String, name As String)
         Using key = root.OpenSubKey(path, True)
-            If Not key Is Nothing Then
-                key.DeleteValue(name, False)
-            End If
+            key?.DeleteValue(name, False)
         End Using
     End Sub
 End Module
@@ -1123,6 +1171,11 @@ Module ControlExtensions
     <Extension()>
     Sub ScaleClientSize(instance As Control, width As Single, height As Single)
         instance.ClientSize = New Size(CInt(instance.Font.Height * width), CInt(instance.Font.Height * height))
+    End Sub
+
+    <Extension()>
+    Sub ScaleSize(instance As Control, width As Single, height As Single)
+        instance.Size = New Size(CInt(instance.Font.Height * width), CInt(instance.Font.Height * height))
     End Sub
 
     <Extension()>
@@ -1145,7 +1198,7 @@ Module ControlExtensions
         Dim ret = ""
 
         For x = 4 To 2 Step -1
-            ret = values.Join("".PadRight(x))
+            ret = values.Where(Function(val) val <> "").Join("".PadRight(x))
             Dim testWidth = TextRenderer.MeasureText(ret, instance.Font).Width
 
             If testWidth < instance.Width Then
@@ -1158,13 +1211,13 @@ Module ControlExtensions
 
     <Extension()>
     Function SetSymbolAsText(instance As ButtonEx, symbol As Symbol) As ButtonEx
-        Dim awesomePath As String = Folder.Apps + "\Fonts\FontAwesome.ttf"
-        Dim segoePath As String = Folder.Apps + "\Fonts\Segoe-MDL2-Assets.ttf"
+        Dim awesomePath As String = Path.Combine(Folder.Apps, "Fonts", "FontAwesome.ttf")
+        Dim segoePath As String = Path.Combine(Folder.Apps, "Fonts", "Segoe-MDL2-Assets.ttf")
 
         Dim fontFilesExist As Boolean = File.Exists(awesomePath) AndAlso File.Exists(segoePath)
         If Not fontFilesExist Then Return Nothing
 
-        Dim fontCollection As PrivateFontCollection = New PrivateFontCollection()
+        Dim fontCollection As New PrivateFontCollection()
         Dim family As FontFamily = Nothing
         Dim legacy = OSVersion.Current < OSVersion.Windows10
 
@@ -1181,7 +1234,7 @@ Module ControlExtensions
             End If
         End If
 
-        If Not family Is Nothing Then
+        If family IsNot Nothing Then
             instance.Font = New Font(family, instance.Font.Size)
             instance.Text = Convert.ToChar(symbol).ToString()
         End If
@@ -1211,7 +1264,7 @@ Module ControlExtensions
 
         instance.SuspendLayout()
         instance.Select(index, length)
-        instance.SelectionBackColor = backColor
+        instance.SelectionBackColor = If(backColor.A = 0, instance.SelectionBackColor, backColor.ToColor())
         instance.SelectionColor = foreColor
 
         If fontStyles IsNot Nothing AndAlso fontStyles.Length > 0 Then
@@ -1233,7 +1286,7 @@ Module UIExtensions
 
     <Extension()>
     Function ResizeToSmallIconSize(img As Image) As Image
-        If Not img Is Nothing AndAlso img.Size <> SystemInformation.SmallIconSize Then
+        If img IsNot Nothing AndAlso img.Size <> SystemInformation.SmallIconSize Then
             Dim s = SystemInformation.SmallIconSize
             Dim r As New Bitmap(s.Width, s.Height)
 
@@ -1377,7 +1430,7 @@ End Module
 Module FontExtensions
     <Extension()>
     Function IsMonospace(fontFamily As FontFamily) As Boolean
-        Using bmp As Bitmap = New Bitmap(1, 1)
+        Using bmp As New Bitmap(1, 1)
             Using g As Graphics = Graphics.FromImage(bmp)
                 Using f = New Font(fontFamily.Name, 20)
                     Dim w1 = g.MeasureString("ii", f).Width
@@ -1390,7 +1443,7 @@ Module FontExtensions
 
     <Extension()>
     Function IsMonospace(font As Font) As Boolean
-        Using bmp As Bitmap = New Bitmap(1, 1)
+        Using bmp As New Bitmap(1, 1)
             Using g As Graphics = Graphics.FromImage(bmp)
                 Using f = New Font(font.Name, 20)
                     Dim w1 = g.MeasureString("ii", f).Width

@@ -1,5 +1,5 @@
 <!--
-v2.3x.0 (not published yet)
+v2.4x.0 (not published yet)
 ====================
 
 - ...
@@ -12,6 +12,566 @@ v2.3x.0 (not published yet)
 - Update VapourSynth plugins
     - ...
 -->
+
+
+v2.42.2 (2024-11-08)
+====================
+
+- General: Add file extension to temp folder name
+- General: Add file extension to log file when saved next to source file
+- Macro: Add new macro %encoder_codec% ([#1520](/../../issues/1520))
+- UI: Fix removing of last path separator from paths ([#1491](/../../issues/1491))
+- UI: Fix not showing error messages on indexing ([#1514](/../../issues/1514))
+- UI: Show crop values on main window ([#1521](/../../issues/1521))
+- UI: Fix Demux Dialog ignores selection of audio and subtitle streams ([#1502](/../../issues/1502))
+- FFmpeg: Fix ProRes Profile option ([#1523](/../../issues/1523))
+- NVEncC: Fix parameters "--qp-init", "--qp-min" and "--qp-max"
+- QSVEncC: Fix parameters "--qp-min" and "--qp-max"
+- SvtAv1EncApp: Fix passing wrong width and height values to the encoder when filters changed the size
+- VCEEncC: Add, fix and alter various parameters ([#1486](/../../issues/1486))
+
+
+v2.42.1 (2024-09-08)
+====================
+
+- UI: Fix Demuxing Subtitles for ffmpeg ([#1466](/../../issues/1466))
+- UI: Fix not saving log files ([#1467](/../../issues/1467))
+- UI: Fix no time display on Crop window ([#1470](/../../issues/1470))
+- UI: Disable Window Dark Mode when system colors are used ([#1470](/../../issues/1470))
+- UI: Fix Demux handling for subtitles ([#1471](/../../issues/1471))
+- NVEncC: Fix incompatible output file type for AV1 encodes
+- QSVEncC: Fix incompatible output file type for AV1 encodes
+- VCEEncC: Fix incompatible output file type for AV1 encodes
+
+
+v2.42.0 (2024-09-05)
+====================
+
+- UI: Add support for Dark Mode Window Mode ([#1448](/../../issues/1448))
+- UI: Enlarge Settings window
+- UI: Enlarge Options window
+- UI: Extend main window and make it resizeable
+- UI: Make number of audio tracks on main window optional
+- UI: Re-implement audio track detection and reordering
+- UI: Add menu items to Crop window to jump to a specific time and frame ([#1421](/../../issues/1421))
+- UI: Fix THD+AC3 Output selection on eac3to window
+- UI: Add "Execute All" to Audio Tracks ([#1123](/../../issues/1123))
+- UI: Improve Dolby Vision Profile 5 metadata import when no VUI metadata available
+- UI: Fix Demux for user selected subtitles
+- UI: Ignore existing video files in temp directory created by Compressibility Check when opening source file again
+- UI: Add new event "After Source Opened"
+    - Which is triggered at the end before validation of the scripts. After the validation the existing "After Source Loaded" triggers
+- UI: Fix Indexing for LWLibav
+- UI: Make Indexing cancelable
+- UI: Add new macros ([#1431](/../../issues/1431))
+    - %hdr10plus_path%, %hdrdv_path%
+- UI: Enable the "Subtitle Edit" button on muxer configuration for all subtitles
+- UI: Fix Audio conversion ignoring Normalize and Gain in some cases
+- UI: Fix Assistant blocking message on cutting without a Dolby Vision metadata file path set ([#1454](/../../issues/1454))
+- UI: Add "ImportVideoEncoderCommandLineFromTextFile" command
+- UI: Improve Command Line Import
+- UI: Improve handling/demuxing with attachments
+- UI: Add support for covers with jpeg file extension ([#1233](/../../issues/1233))
+- UI: Fix crash on Crop window opening under some circumstances ([#1462](/../../issues/1462))
+- Crop: Make AutoCrop process skippable ([#1411](/../../issues/1411))
+- Crop: Add Frame Interval Selection Mode
+- Crop: Add Frame Consideration Mode to Options ([#1386](/../../issues/1386))
+    - Makes it able to handle intros and outros that are not cropped
+- Crop: Add Luminance Threshold
+    - Lets the user set the max brightness of a line, that is considered to be cropped
+- Crop: Improve Automatic Mode for Dolby Vision sources
+- FFmpeg: Add "-movflags +faststart" to muxer command where possible ([#1408](/../../issues/1408))
+- MP4Box: Add "Streaming" command line menu preset ([#1408](/../../issues/1408))
+- NVEncC: Add options "RGB" and "YUVA420" to parameter "--output-csp"
+- NVEncC: Fix incompatible output file type for AV1 encodes
+- NVEncC: Make Dolby Vision related parameters available for AV1
+- Qaac: Add "--no-delay" parameter ([#1410](/../../issues/1410))
+- QSVEncC: Fix incompatible output file type for AV1 encodes
+- QSVEncC: Add "--output-csp" parameter
+- SvtAv1EncApp: Fix parameters for non Psy versions
+    - "--qp", "--qp-max"
+- SvtAv1EncApp: Add parameters
+    - "--tf-strength", "--chroma-qm-min", "--chroma-qm-max", "--tune 4"
+- VCEEncC: Add parameters ([#1444](/../../issues/1444))
+    - "--vpp-decomb", "--vpp-fft3d", "--vpp-nlmeans", "--atc-sei", "--chromaloc", "--colorrange", "--master-display", "--max-cll"
+- VCEEncC: Fix parameters ([#1444](/../../issues/1444))
+    - "--pa", "--preset"
+- VCEEncC: Fix mode options across all codecs ([#1444](/../../issues/1444))
+- VCEEncC: Fix incompatible output file type for AV1 encodes
+- x265: Add parameters
+    - "--alpha", "--format", "--scc"
+- x265: Fix "--aq-mode" default value across different presets
+- Update tools
+    - aomenc v3.9.1-419-g9ed60cc5ff-x64-msvc1940
+    - AutoCrop v2.5
+    - DoVi_Tool v2.1.2
+    - eac3to v3.52
+    - ffmpeg N-116758-x64-gcc14.2.0
+    - MediaInfo v24.04
+    - MKVToolNix v86.0
+    - Mp4Box v2.5-DEV-rev479-gd7e1a5c15-x64-msvc1940
+    - NVEncC v7.66
+    - QSVEncC v7.69
+    - rav1e v0.7.0 (p20240612-5-g7ab0de1)-x64-msvc1940
+    - Subtitle Edit v4.0.7
+    - SvtAv1EncApp v2.2.1-0+1-e6255481-.Mod-by-Patman.-x64-msvc1940 [SVT-AV1-PSY]
+    - VCEEncC v8.23
+    - vvencFFapp v1.12.0 r245-efb49f4
+    - x265 v3.6+85+1-b5cacb584-.Mod-by-Patman.-x64-avx2-msvc1940
+- Update AviSynth+ plugins
+    - AvsResize R25
+- Update Dual plugins
+    - BestSource R6
+- Update VapourSynth plugins
+    - Curve r3
+
+
+v2.41.7 (2024-07-09)
+====================
+
+- UI: Fix applying of wrong/default theme when selecting existing folder on first start ([#1418](/../../issues/1418))
+- UI: Fix script files being also deleted when Video file types are selected
+- UI: Fix crash on typing in invalid characters to the target file name
+- NVEncC: Add new "--vpp-ngx-truehdr" parameter
+- NVEncC: Fix crash when activating "Resize"
+
+
+v2.41.6 (2024-07-03)
+====================
+
+- UI: Fix "--normalize" and "--gain" are used for qaac at the same time when Pipe is used ([#1410](/../../issues/1410))
+- Internal: Fix crash on demuxing command without loaded project
+- Internal: Fix rare crash when closing Processing window right before closing StaxRip ([#1414](/../../issues/1414))
+- Internal: Raise event "Before Job Adding" also when adding a batch job ([#1407](/../../issues/1407))
+- Internal: Improve valid Dolby Vision metadata recognition for extraction ([#1409](/../../issues/1409))
+- NVEncC: Add new "--vpp-fft3d" parameter
+- NVEncC: Add new value "ngx-vsr" for "--vpp-resize" parameter
+- x264: Add "--aq-bias-strength" parameter ([#1412](/../../issues/1412))
+- Update tools
+    - MediaInfo v24.06
+    - NVEncC v7.57
+    - QSVEncC v7.67
+    - vvencFFapp v1.12.0 r236-d57c73d
+
+
+v2.41.5 (2024-06-23)
+====================
+
+- UI: Fix tolerances to Frame Mismatch for temp files deletion ([#1400](/../../issues/1400))
+- Update tools
+    - MKVToolNix v85.0
+    - OpusEnc v0.2-34-g98f3ddc (using libopus 1.5.2-11-g2554a89)
+    - SvtAv1EncApp v2.1.0-A-1+6-adc3da7b-.Mod-by-Patman.-x64-msvc1940 [SVT-AV1-PSY]
+
+
+v2.41.4 (not published)
+====================
+
+- UI: Add tolerances to Frame Mismatch when it comes to delete temp files ([#1400](/../../issues/1400))
+    - There are rare cases where an encoder or muxer might add a few frames to the final file
+- SvtAv1EncApp: Fix default value for "--enable-variance-boost" ([#1405](/../../issues/1405))
+
+
+v2.41.3 (not published)
+====================
+
+- UI: Remove VP9 as supported extension for mkvmerge (mkv and webm)
+- QSVEncC: Fix VP9 encoding
+
+
+v2.41.2 (2024-06-21)
+====================
+
+- UI: Add VP9 as supported extension for mkvmerge (mkv and webm)
+- Internal: Fix package dependencies ([#1401](/../../issues/1401))
+
+
+v2.41.1 (not published)
+====================
+
+- SvtAv1EncApp: Fix Variance Boost parameters ([#1398](/../../issues/1398))
+- SvtAv1EncApp: Fix "--adaptive-film-grain" parameters default value ([#1398](/../../issues/1398))
+
+
+v2.41.0 (2024-06-16)
+====================
+
+- Crop: Improve Automatic Dolby Vision Auto Crop mode
+- QSVEncC: Add new "--vpp-fft3d" parameter
+- SvtAv1EncApp: Add new "--adaptive-film-grain" parameter [PSY]
+- SvtAv1EncApp: Add new "--hdr10plus-json" parameter [PSY]
+- SvtAv1EncApp: Add new "--max-32-tx-size" parameter [PSY]
+- SvtAv1EncApp: Add HDR10+ JSON file importation to VUI metadata import
+- SvtAv1EncApp: Fix VUI metadata import
+- VapourSynth: Fix wrong loading order of dependencies under some circumstances
+- Update tools
+    - AOMEnc v3.9.1-227-g49c02efb61-x64-msvc1940
+    - DGMPGDec v3.0.0.0
+    - ffmpeg N-115847-g7c95c7de4a-x64-gcc14.1.0
+    - Mp4Box v2.5-DEV-rev273-gf2ce8bf1d-x64-msvc1940
+    - QSVEncC v7.66
+    - rav1e v0.7.0 (p20240612)-x64-gcc14.1.0
+    - SvtAv1EncApp v2.1.0-A-1+4-52522a1a-.Mod-by-Patman.-x64-msvc1940 [SVT-AV1-PSY]
+
+
+v2.40.1 (not published)
+====================
+
+- Internal: Fix path handling when passed to StaxRip as parameter value via command line ([#1390](/../../issues/1390))
+- Internal: Fix package dependencies
+
+
+v2.40.0 (2024-06-08)
+====================
+
+- UI: Fix path handling when passed to StaxRip via command line ([#1375](/../../issues/1375), [#1377](/../../issues/1377), [#1378](/../../issues/1378))
+- UI: Fix blocking script error messages during job proceeding ([#1231](/../../issues/1231))
+- UI: Add question when adding an existing and active job with similar project file path
+- UI: Add new event "Before Job Adding" ([#1346](/../../issues/1346))
+- UI: Add new event "After Job Added"
+- UI: Add setting for frame number position on file names when saving images ([#1373](/../../issues/1373))
+- UI: Improve Progress Highlighting
+- Crop: Activate AutoCrop by default
+    - Due to a poll on Discord where most participants crop all their videos
+- Crop: Move AutoCrop settings from Settings to Project Options
+- Crop: Add new "Time Interval" mode for AutoCrop
+    - Analyzes a frame every x seconds, which makes it more useful throughout short and long videos
+- VideoComparison: Run indexing of source files as (visible) task/job ([#1226](/../../issues/1226))
+- Internal: Skip importing of scripts that are used by commented out functions (thanks to @Valdiralita ([#1318](/../../pull/1318)))
+- NVEncC: Add new "--vpp-decomb" parameter
+- QSVEncC: Add new "--vpp-decomb" parameter
+- SvtAv1EncApp: Add long path support ([#1374](/../../issues/1374))
+- Update tools
+    - AutoCrop v2.4
+    - MediaInfo v24.05
+    - MKVToolNix v84.0
+    - NVEncC v7.54
+    - QSVEncC v7.65
+    - Subtitle Edit v4.0.6
+    - SvtAv1EncApp v2.1.0-1+1-8ba1c70f-.Mod-by-Patman.-x64-msvc1939 [SVT-AV1-PSY]
+    - vvencFFapp v1.11.1 r227-77574c
+    - x264 v0.164.3191+1-e3de8e8-.Mod-by-Patman.-x64-gcc14.1.0
+    - x265 v3.6+13+1-726aec126-.Mod-by-Patman.-x64-avx2-msvc1939
+- Update Dual plugins
+    - BestSource R5
+    - ffms2 v5.0
+
+
+v2.39.3 (2024-05-30)
+====================
+
+- UI: Fix multiple files opening when a comma was included ([#1372](/../../issues/1372))
+- FFmpeg: Concat "-af" parameters on audio conversion ([#1370](/../../issues/1370))
+    - Makes it possible to add custom params when using "Normalize"
+- SvtAv1EncApp: Fix VUI metadata import ([#1371](/../../issues/1371))
+
+
+v2.39.2 (2024-05-27)
+====================
+
+- UI: Fix DVB subtitle extraction from TS containers throwing errors ([#1361](/../../issues/1361))
+- UI: Fix long path issues on Batch file jobs ([#1051](/../../issues/1051))
+- UI: Fix not able to open Batch file jobs ([#1051](/../../issues/1051))
+- SvtAv1EncApp: Add VUI metadata import ([#1362](/../../issues/1362))
+- VapourSynth: Fix presets ([#1359](/../../issues/1359))
+
+
+v2.39.1 (2024-05-13)
+====================
+
+- SvtAv1EncApp: Fix not showing "--frame-luma-bias" parameter ([#1356](/../../issues/1356))
+- Update tools
+    - AutoCrop v2.3
+
+
+v2.39.0 (2024-05-12)
+====================
+
+- UI: Introduce Progress Highlighting
+- UI: In Main Menu move project based Folders from Tools to Project
+- UI: Adjust some default settings
+- UI: Show full path on tab hover on Video Comparison ([#1336](/../../issues/1336))
+- UI: Show full path on Video Comparison ([#1336](/../../issues/1336))
+- UI: Fix crash with some mp4 files on Video Comparison ([#1258](/../../issues/1258))
+- UI: Fix Animated GIF/PNG crashing on most settings
+- NVEncC: Remove "--tune" parameter
+- NVEncC: Add new "--vpp-nlmeans" parameter
+- QSVEncC: Add new "--vpp-nlmeans" parameter
+- SvtAv1EncApp: Add new "--frame-luma-bias" parameter
+- x265: Fix few missing NO parameters ([#1344](/../../issues/1344))
+- AviSynth: Fix Placebo preset ([#1335](/../../issues/1335))
+- VapourSynth: Fix wrong loading order of Python scripts on multiple calls ([#1340](/../../issues/1340))
+- Internal: Fix Linux compatibility a bit more ([#1337](/../../issues/1337), [#1348](/../../issues/1348))
+- Update tools
+    - ~~AutoCrop v2.3~~
+    - DeeZy v0.1.9
+    - MediaInfo v24.04
+    - NVEncC v7.53
+    - QSVEncC v7.64
+    - SvtAv1EncApp v2.0.0-A-0+4-e8223021_Mod_by_Patman_x64_msvc1939 [SVT-AV1-PSY]
+- Update Dual plugins
+    - BestSource R4
+- Update VapourSynth plugins
+    - vs-imwri r2
+    - mvsfunc r10
+
+
+v2.38.7 (2024-05-02)
+====================
+
+- UI: Fix import and setting of encoder parameters
+- VapourSynth: Fix potential wrong loading order of Python scripts
+- Internal: Small fixes, improvements, changes
+- Internal: Fix crash using Auto Crop on extremely short videos with Dolby Vision ([#1327](/../../issues/1327))
+- Internal: Fix ignoring of existing Dolby Vision metadata in temp folder
+- Internal: Fix Linux compatibility a bit more ([#1331](/../../issues/1331))
+
+
+v2.38.6 (2024-04-26)
+====================
+
+- Log: Extend logging for Dolby Vision metadata files
+- UI: Show TaskDialog timeout when set
+- UI: Fix Auto Crop not working properly on videos with multiple aspect ratios ([#1324](/../../issues/1324))
+- Internal: Fix Linux compatibility a bit more ([#1326](/../../issues/1326), [#1329](/../../issues/1329))
+
+
+v2.38.5 (2024-04-25)
+====================
+
+- UI: Adjust StaxRip Update Check to perform cascade-like
+    - More frequent checks on new versions, less frequent checks the older the version gets
+- Internal: Fix Linux compatibility with macros and path handling
+
+
+v2.38.4 (2024-04-25)
+====================
+
+- UI: Extend max number of frames used for Auto Crop ([#1324](/../../issues/1324))
+- Internal: Fix Linux compatibility that caused issues with macros
+
+
+v2.38.3 (2024-04-24)
+====================
+
+- Internal: Fix Linux compatibility that caused Blu-ray folders not being found anymore
+
+
+v2.38.2 (2024-04-24)
+====================
+
+- UI: Load new Startup Template when changed in Settings ([#1229](/../../issues/1229))
+- UI: Improve Error Messages
+- UI: Make Frame Mismatch more robust towards wrong script information ([#1315](/../../issues/1315), [#1322](/../../issues/1322))
+- UI: Fix not or delayed updating target parameters ([#1315](/../../issues/1315), [#1322](/../../issues/1322), [#1323](/../../issues/1323))
+- FFmpeg: Fix output file extensions when using some codecs
+- NVEncC: Fix "--vmaf" parameter usage
+- NVEncC: Fix "--tune" parameter
+- NVEncC: Bring back "--lossless" and "--lowlatency" parameters as they are not covered by new "--tune" modes
+- SvtAv1EncApp: Extend SVT-AV1-PSY-Support
+
+
+v2.38.1 (not published)
+====================
+
+- Internal: Bring "Improve Linux compatibility" into master (thanks to @Valdiralita ([#852](/../../pull/852)))
+
+
+v2.38.0 (2024-04-16)
+====================
+
+- UI: Add "Changelog" to Main Menu
+- UI: Add "Discord Server" to Main Menu
+- UI: Add "Exit" to Main Menu
+- UI: Add "Launch new instance" to Main Menu
+- UI: Add "Report an issue" to Main Menu
+- UI: Add "Support" to Main Menu
+- UI: Add "What's new" to Main Menu
+- UI: Rearrange Project in Main Menu
+- UI: Rearrange Encoder Profiles
+- UI: Move temp file deletion from Settings to Options
+- UI: Add options to separate temp file deletion based on file types ([#1236](/../../issues/1236))
+- UI: Improve memory usage
+- UI: Improve performance with script handling, Assistant, Preview, Code Editor and interface
+- UI: Improve script update performance (thanks to @Valdiralita ([#1262](/../../pull/1262)))
+- UI: Show Preview Info by default
+- UI: Make Preview a normal window by default
+- UI: Add "Output Mod Direction" to allow decreasing when auto cropping or correcting is applied ([#1285](/../../issues/1285))
+- UI: Fix Saving of jobs on network shares ([#1308](/../../issues/1308))
+- UI: Fix Import Command Line for checkboxed parameters
+- UI: Output Highlighting for Pipe symbol
+- UI: Add Plugin fulfillment requirements
+    - If a requirement is not fulfilled, the import will be commented out
+- UI: Shorten "What's new" report if needed
+- UI: Remove Update question at first start
+    - Update Check is enabled by default and can be disabled in the Settings
+    - According to the poll on Discord
+- NVEncC: Add new --lookahead-level parameter
+- NVEncC: Add new --tf-level parameter
+- NVEncC: Add new --tune parameter
+- SvtAv1EncApp: Add SVT-AV1-PSY Support
+- Update tools
+    - AOMEnc v3.8.2-397-ga4420e55a8-x64-msvc1937
+    - DoVi_Tool v2.1.1
+    - eac3to v3.51
+    - MediaInfo v24.03
+    - Mp4Box v2.3-DEV-rev1042-g7a3eca90b-x64-msvc1937
+    - NVEncC v7.50
+    - qaac v2.82
+    - rav1e v0.7.0-(p20240409)-x64-gcc13.2.0
+    - Subtitle Edit v4.0.5
+    - SvtAv1EncApp v2.0.0-7+6-62325458-.Mod-by-Patman.-x64-msvc1937
+    - x264 v0.164.3190+7-f54976d-.Mod-by-Patman.-x64-gcc13.2.0
+    - x265 v3.6+2+13-9a3dac6e5-.Mod-by-Patman.-x64-avx2-msvc1937
+- Update Dual plugins
+    - BestSource R2-RC4
+    - L-SMASH-Works v1194
+- Update VapourSynth plugins
+    - mvsfunc v11 [865c748 / 2023]
+    - SubText R5
+
+
+v2.37.6 (2024-04-12)
+====================
+
+- UI: Add Progress for dovi_tool and hdr10plus_tool
+- UI: Adjust Progress Reformatting for SvtAv1EncApp
+- UI: Improve saving of Jobs List to avoid data loss on full disk
+- VapourSynth: Fix missing loading of SubText for hardcoded subtitles ([#1307](/../../issues/1307))
+
+
+v2.37.5 (2024-04-06)
+====================
+
+- UI: Fix asking for Project saving on Templates
+- UI: Optimize ignorable Output Mod warning ([#1285](/../../issues/1285))
+- SvtAv1EncApp: Update settings and parameters to v2.0.0 ([#1273](/../../issues/1273))
+- vvencFFapp: Fix display for Compression Check Run ([#1284](/../../issues/1284))
+
+
+v2.37.4 (2024-03-28)
+====================
+
+- UI: Trigger event "While Processing" more often, but also time limited
+- UI: Make timeout for error messages on job processing optional
+- UI: Convert tabs to spaces on Processing window for better looking output ([#1243](/../../issues/1243))
+- UI: Fix not asking for Project saving when dropping file under some circumstances
+- UI: Make Output Mod warning ignorable ([#1285](/../../issues/1285))
+
+
+v2.37.3 (2024-03-23)
+====================
+
+- UI: Fix tonemapping for HDR videos for Crop window not working under some circumstances
+- UI: Set Process Priority from "Idle" to "Below Normal"
+- NVEncC: Fix wrong parameter settings for "--vpp-nvvfx-denoise" and "--vpp-nvvfx-artifact-reduction" ([#1283](/../../issues/1283))
+
+
+v2.37.2 (2024-03-22)
+====================
+
+- UI: Extend Crop window with Time information ([#1274](/../../issues/1274))
+- UI: Update and extend Show Changelog
+- UI: Update and adjust Updater
+
+
+v2.37.1 (2024-03-18)
+====================
+
+- UI: Fix crash on AutoCrop selection in Options on Templates ([#1276](/../../issues/1276))
+
+
+v2.37.0 (2024-03-17)
+====================
+
+- UI: Enhance Auto Crop for Dolby Vision sources
+- UI: Improve handling with Dolby Vision videos and manual cropping
+- UI: Re-read modified Dolby Vision metadata automatically on window focus
+- UI: Improve Dolby Vision metadata handling
+- UI: Enhance "Frame Mismatch" error message
+- UI: Let "Frame Mismatch" ignore cutted "Copy/Mux" runs ([#1234](/../../issues/1234))
+- UI: Write "Media Info Source File" only if it has changed ([#1221](/../../issues/1221))
+- UI: Take given HDR10+/DolbyVision metadata into account when calculate target size/bitrate ([#1254](/../../issues/1254))
+- UI: Fix rounding issue with number edits when using mouse wheel ([#1253](/../../issues/1253))
+- UI: Fix rare crash on Audio and Muxer window opening
+- FFmpeg: Add "-hwaccel cuda" to command line when NVIDIA decoder is selected ([#1260](/../../issues/1260))
+- NVEncC: Rearrange some parameters ([#1240](/../../issues/1240))
+- NVEncC: Enable Dolby Vision only when H265 is selected ([#1261](/../../issues/1261))
+- NVEncC: Add "--vpp-nvvfx-artifact-reduction" parameter ([#1240](/../../issues/1240))
+- NVEncC: Add "--vpp-nvvfx-denoise" parameter ([#1240](/../../issues/1240))
+- NVEncC: Fix "--vpp-resize" parameter setting for "nvvfx-superres"
+- QSVEncC: Enable Dolby Vision only when H265 is selected
+- SvtAv1EncApp: Fix Passes could also affect Quality mode ([#1267](/../../issues/1267))
+- VCEEncC: Add "--vpp-denoise-dct" parameter
+- VCEEncC: Fix problem with missing space before parameter call
+- VCEEncC: Remove Dolby Vision support
+- x265: Add "--auto-aq" parameter ([#1241](/../../issues/1241))
+- Update tools
+    - DeeZy v0.1.8
+    - eac3to v3.50
+    - MKVToolNix v83.0
+    - MP4Box v2.3-DEV-rev975-ge50da0656-x64-msvc1937
+    - NVEncC v7.46
+    - Python v3.12.2
+    - QSVEncC v7.62
+    - rav1e v0.7.0-(p20240312)-x64-gcc13.2.0
+    - Subtitle Edit v4.0.4
+    - SvtAv1EncApp v2.0.0-1+3-58b1b010-.Mod-by-Patman.-x64-msvc1937
+    - VapourSynth R66
+    - VCEEncC v8.22
+    - vvencFFapp v1.11.1
+    - x264 v0.164.3186+8-53164ba-.Mod-by-Patman.-x64-gcc13.2.0
+    - x265 v3.5+156+14-df2e4c31e-.Mod-by-Patman.-x64-avx2-msvc1937
+- Update AviSynth+ plugins
+    - eedi3_resize16 v3.3.16
+    - JPSDR v3.3.5 (W7 AVX2)
+    - TIVTC v1.0.29
+- Update Dual plugins
+    - ffms2 v5.0 RC3
+    - L-SMASH-Works v1183 [20240317]
+- Update VapourSynth plugins
+    - HQDN3D v1.00 mod
+
+
+v2.36.0 (2024-02-23)
+====================
+
+- UI: "Import VUI metadata" doesn't override Dolby Vision profile depending on selected mode ([#1212](/../../issues/1212))
+- UI: Extend Assistant check for VBV settings when using Dolby Vision to custom parameters ([#1213](/../../issues/1213))
+- UI: Fix Crop bug that caused unnecessary and sometimes wrong cropping
+- UI: Set "Output Mod" default value to 2 (inspired by the poll on Discord)
+- UI: Improve handling/finding with metadata files
+- UI: Fix issue with dovi_tool not being able to handle paths with comma ([#1238](/../../issues/1238))
+- UI: Add threshold for cropping Dolby Vision videos based on metadata
+- UI: Split command "ShowHardcodedSubtitleDialog" into "[..]DialogFromLastSourceDir" and "[..]DialogFromTempDir" ([#1199](/../../issues/1199))
+- UI: Add new event "While Processing" which is called once every percent of progress on video encoders ([#1197](/../../issues/1197))
+- UI: Add new macros that are currently only supported by the new "While Processing" event 
+    - %commandline%, %progress%, %progressline%
+- UI: Add new macros
+    - %jobs%, %jobs_active%
+- UI: Improve filename parsing for subtitles ([#1200](/../../issues/1200)), ([#1220](/../../issues/1220))
+- UI: Improve track name parsing from filenames ([#1220](/../../issues/1220))
+- UI: Improve Resize filter Assistant check for Dolby Vision
+- UI: Add ".mks" to valid subtitle file types ([#1227](/../../issues/1227))
+- UI: Adjust resize slider on main window
+- UI: Make Settings window a bit higher ([#1211](/../../issues/1211))
+- NVEncC: Add support for Dolby Vision metadata handling
+- NVEncC: Fix wrong "--vpp-resize" parameter options visibility
+- QSVEncC: Add support for Dolby Vision metadata handling
+- QSVEncC: Add "Show advanced QP settings"
+- QSVEncC: Add "--vpp-denoise-dct" parameter
+- VCEEncC: Add support for Dolby Vision metadata handling
+- VCEEncC: Add Dolby Vision parameters to encoder options
+- VCEEncC: Fix "--cqp" parameter value for HEVC codec ([#1222](/../../issues/1222))
+- Update tools
+    - mpv.net v7.1.1.0
+    - Python v3.11.7
+    - QSVEncC v7.61
+    - vvencFFapp v1.11.0
+- Update Dual plugins
+    - ffms2 v3.0.1.0 1357+34 r1391 4fbfa13ea1 StvG
+- Update VapourSynth plugins
+    - libhistogram v2.0 2021-11-13
 
 
 v2.35.0 (2024-02-02)
@@ -44,6 +604,7 @@ v2.34.0 (2024-01-26)
 - UI: Let "HDR metadata extraction" also set the json file when an rpu file was found/set
 - UI: Add option to save Preview window size ([#986](/../../issues/986))
 - UI: Improve "Output Highlighting"
+- Make number of audio tracks on main window optional
 - NVEncC: Add --vpp-denoise-dct parameter
 - x265: Add Assistant check for VBV settings when using DolbyVision
 - Update tools
@@ -135,6 +696,7 @@ v2.31.0 (2024-01-01)
     - AOMEnc v3.8.0-178-ge065e0fead-x64-msvc1938
     - FFmpeg N-113112-gf5f414d9c4-x64-gcc13.2.0
     - MP4Box v2.3-DEV-rev724-g8684dfbcc-x64-msvc1938
+    - Python v3.11.4
     - rav1e v0.6.1 (p20231226)-x64-gcc13.2.0
     - SvtAv1EncApp v1.8.0-1+3-43997134-[Mod-by-Patman]-x64-msvc1938
     - VapourSynth R65

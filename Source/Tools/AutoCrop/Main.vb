@@ -2,7 +2,10 @@
 Imports System.Drawing
 Imports System.Drawing.Imaging
 Imports System.IO
+Imports System.Runtime.CompilerServices
 Imports System.Runtime.InteropServices
+Imports System.Text.RegularExpressions
+Imports Microsoft.VisualBasic
 
 Module Module1
     Sub Main()
@@ -10,39 +13,63 @@ Module Module1
             Dim args = Environment.GetCommandLineArgs()
 
             If args.Length = 1 Then
-                Console.WriteLine("AutoCrop <avs/vpy path> <frame count> <VFW>")
+                Console.WriteLine("AutoCrop <avs/vpy path> <number|interval> <frame count|seconds> <thresholdbegin> <thresholdend> <luminance threshold> <VFW>")
                 Exit Sub
             End If
 
             Dim scriptPath = args(1)
-            Dim count = CInt(args(2))
-            Dim vfw = args(3) = "1"
+            Dim selectionMode = CInt(args(2))
+            Dim selectionValue = CInt(args(3))
+            Dim thresholdBegin = CInt(args(4))
+            Dim thresholdEnd = CInt(args(5))
+            Dim lumThreshold = CInt(args(6)) / 10000F
+            Dim vfw = args(7) = "1"
 
             Using server = FrameServerFactory.Create(scriptPath, vfw)
-                Dim len = server.Info.FrameCount \ (count + 1)
-                Dim crops(count - 1) As AutoCrop
-                Dim pos = 0
+                Dim info = server.Info
+                Dim frameCount = info.FrameCount
+                Dim frameRate = info.FrameRate
+                Dim startFrame = thresholdBegin
+                Dim endFrame = frameCount - 1 - thresholdEnd
+                Dim consideredFrames = endFrame - startFrame
+                Dim minFrames = 5
+                Dim interval = 0
+                If selectionMode = 1 Then
+                    interval = consideredFrames \ selectionValue
+                ElseIf selectionMode = 2 Then
+                    interval = selectionValue
+                ElseIf selectionMode = 3 Then
+                    interval = CInt(Conversion.Fix(selectionValue * frameRate))
+                End If
+                interval = Math.Min(interval, consideredFrames \ minFrames)
+                Dim analyzeCount = (consideredFrames \ interval) + 1
+                Dim analyzeFrames(analyzeCount - 1) As Integer
+                Dim crops(analyzeCount - 1) As AutoCrop
+                Dim offset = (consideredFrames - ((analyzeCount - 1) * interval)) \ 2
+                startFrame += offset
 
-                For i = 0 To count - 1
-                    Console.WriteLine($"Progress: {(i / count * 100):f0}%")
-                    pos += len
-
-                    Using bmp = BitmapUtil.CreateBitmap(server, pos)
-                        crops(i) = AutoCrop.Start(bmp.Clone(New Rectangle(0, 0, bmp.Width, bmp.Height), PixelFormat.Format32bppRgb), pos)
-                    End Using
+                For i = 0 To analyzeCount - 1
+                    analyzeFrames(i) = Math.Min(startFrame + i * interval, endFrame)
                 Next
 
-                Dim leftCrops = crops.SelectMany(Function(arg) arg.Left).OrderBy(Function(arg) arg)
-                Dim left = leftCrops(leftCrops.Count \ 10)
+                For i = 0 To analyzeCount - 1
+                    Console.WriteLine($"Progress: {(i / analyzeCount * 100):f0}%")
 
-                Dim topCrops = crops.SelectMany(Function(arg) arg.Top).OrderBy(Function(arg) arg)
-                Dim top = topCrops(topCrops.Count \ 10)
+                    Dim frame = analyzeFrames(i)
+                    Using bmp = BitmapUtil.CreateBitmap(server, frame)
+                        crops(i) = AutoCrop.Start(bmp.Clone(New Rectangle(0, 0, bmp.Width, bmp.Height), PixelFormat.Format32bppRgb), frame, lumThreshold)
+                    End Using
 
-                Dim rightCrops = crops.SelectMany(Function(arg) arg.Right).OrderBy(Function(arg) arg)
-                Dim right = rightCrops(rightCrops.Count \ 10)
+                    If crops(i).Left.Min = 0 AndAlso crops(i).Top.Min = 0 AndAlso crops(i).Right.Min = 0 AndAlso crops(i).Bottom.Min = 0 Then
+                        Console.WriteLine($"Progress: 100%")
+                        Exit For
+                    End If
+                Next
 
-                Dim bottomCrops = crops.SelectMany(Function(arg) arg.Bottom).OrderBy(Function(arg) arg)
-                Dim bottom = bottomCrops(bottomCrops.Count \ 10)
+                Dim left = crops.Where(Function(x) x IsNot Nothing).SelectMany(Function(arg) arg.Left).Min()
+                Dim top = crops.Where(Function(x) x IsNot Nothing).SelectMany(Function(arg) arg.Top).Min()
+                Dim right = crops.Where(Function(x) x IsNot Nothing).SelectMany(Function(arg) arg.Right).Min()
+                Dim bottom = crops.Where(Function(x) x IsNot Nothing).SelectMany(Function(arg) arg.Bottom).Min()
 
                 Console.WriteLine($"{left},{top},{right},{bottom}")
             End Using
@@ -57,16 +84,22 @@ Module Module1
     End Function
 End Module
 
+Module Extensions
+    <Extension()>
+    Function ToColorHSL(color As Color) As ColorHSL
+        Return color
+    End Function
+End Module
+
 Public Class AutoCrop
     Public Top As Integer()
     Public Bottom As Integer()
     Public Left As Integer()
     Public Right As Integer()
 
-    Shared Function Start(bmp As Bitmap, position As Integer) As AutoCrop
+    Shared Function Start(bmp As Bitmap, position As Integer, threshold As Single) As AutoCrop
         Dim ret As New AutoCrop
         Dim u = BitmapUtil.Create(bmp)
-        Dim max = 20
         Dim xCount = 20
         Dim yCount = 20
 
@@ -81,7 +114,7 @@ Public Class AutoCrop
 
         For xValue = 0 To xValues.Length - 1
             For y = 0 To u.BitmapData.Height \ 4
-                If u.GetMax(xValues(xValue), y) < max Then
+                If u.GetMaxLuminance(xValues(xValue), y) < threshold Then
                     ret.Top(xValue) = y + 1
                 Else
                     Exit For
@@ -89,7 +122,7 @@ Public Class AutoCrop
             Next
 
             For y = u.BitmapData.Height - 1 To u.BitmapData.Height - u.BitmapData.Height \ 4 Step -1
-                If u.GetMax(xValues(xValue), y) < max Then
+                If u.GetMaxLuminance(xValues(xValue), y) < threshold Then
                     ret.Bottom(xValue) = u.BitmapData.Height - y
                 Else
                     Exit For
@@ -108,7 +141,7 @@ Public Class AutoCrop
 
         For yValue = 0 To yValues.Length - 1
             For x = 0 To u.BitmapData.Width \ 4
-                If u.GetMax(x, yValues(yValue)) < max Then
+                If u.GetMaxLuminance(x, yValues(yValue)) < threshold Then
                     ret.Left(yValue) = x + 1
                 Else
                     Exit For
@@ -116,7 +149,7 @@ Public Class AutoCrop
             Next
 
             For x = u.BitmapData.Width - 1 To u.BitmapData.Width - u.BitmapData.Width \ 4 Step -1
-                If u.GetMax(x, yValues(yValue)) < max Then
+                If u.GetMaxLuminance(x, yValues(yValue)) < threshold Then
                     ret.Right(yValue) = u.BitmapData.Width - x
                 Else
                     Exit For
@@ -137,10 +170,8 @@ Public Class BitmapUtil
         Return Color.FromArgb(Data(pos), Data(pos + 1), Data(pos + 2))
     End Function
 
-    Function GetMax(x As Integer, y As Integer) As Integer
-        Dim col = GetPixel(x, y)
-        Dim max = Math.Max(col.R, col.G)
-        Return Math.Max(max, col.B)
+    Function GetMaxLuminance(x As Integer, y As Integer) As Single
+        Return GetPixel(x, y).ToColorHSL().L
     End Function
 
     Shared Function Create(bmp As Bitmap) As BitmapUtil
@@ -245,6 +276,12 @@ Public Structure ServerInfo
     Public FrameRateDen As Integer
     Public FrameCount As Integer
     Public ColorSpace As Integer
+
+    ReadOnly Property FrameRate As Decimal
+        Get
+            Return If(FrameRateDen <> 0, Decimal.Divide(FrameRateNum, FrameRateDen), 0)
+        End Get
+    End Property
 End Structure
 
 Public Class FrameServerFactory
@@ -478,4 +515,283 @@ Public Class VfwFrameServer
             WasDisposed = True
         End If
     End Sub
+End Class
+
+<Serializable>
+Public Structure ColorHSL
+    Private ReadOnly _h As Integer
+    Private ReadOnly _s As Single
+    Private ReadOnly _l As Single
+    Private ReadOnly _a As Single
+
+
+    Public ReadOnly Property H As Integer
+        Get
+            Return _h
+        End Get
+    End Property
+
+    Public ReadOnly Property S As Single
+        Get
+            Return _s
+        End Get
+    End Property
+
+    Public ReadOnly Property L As Single
+        Get
+            Return _l
+        End Get
+    End Property
+
+    Public ReadOnly Property A As Single
+        Get
+            Return _a
+        End Get
+    End Property
+
+    Public Sub New(h As Integer, s As Single, l As Single, Optional a As Single = 1.0F)
+        Dim newHue = h Mod 360
+        _h = Mathf.Clamp(If(newHue < 0, newHue + 360, newHue), 0, 359)
+        _s = Mathf.Clamp01(s)
+        _l = Mathf.Clamp01(l)
+        _a = Mathf.Clamp01(a)
+    End Sub
+
+    Public Shared Widening Operator CType(colorHSL As ColorHSL) As Color
+        Dim hue As Integer = Mathf.Clamp(colorHSL.H Mod 360, 0, 359)
+        Dim saturation As Single = Mathf.Clamp01(colorHSL.S)
+        Dim lightness As Single = Mathf.Clamp01(colorHSL.L)
+        Dim alpha As Single = Mathf.Clamp01(colorHSL.A)
+        Dim c As Single = (1.0F - Math.Abs(2.0F * lightness - 1.0F)) * saturation
+        Dim x As Single = c * (1.0F - Math.Abs((hue / 60.0F) Mod 2.0F - 1.0F))
+        Dim m As Single = lightness - c / 2.0F
+        Dim r As Single = c
+        Dim g As Single = 0
+        Dim b As Single = x
+
+        If hue < 300 Then
+            r = x
+            g = 0
+            b = c
+        End If
+
+        If hue < 240 Then
+            r = 0
+            g = x
+            b = c
+        End If
+
+        If hue < 180 Then
+            r = 0
+            g = c
+            b = x
+        End If
+
+        If hue < 120 Then
+            r = x
+            g = c
+            b = 0
+        End If
+
+        If hue < 60 Then
+            r = c
+            g = x
+            b = 0
+        End If
+        Return Color.FromArgb(CType(alpha * 255.0F, Byte), CType(Mathf.Clamp01(r + m) * 255.0F, Byte), CType(Mathf.Clamp01(g + m) * 255.0F, Byte), CType(Mathf.Clamp01(b + m) * 255.0F, Byte))
+    End Operator
+
+    Public Shared Widening Operator CType(color As Color) As ColorHSL
+        Dim r As Single = color.R / 255.0F
+        Dim g As Single = color.G / 255.0F
+        Dim b As Single = color.B / 255.0F
+        Dim max As Single = Mathf.Max(r, g, b)
+        Dim min As Single = Mathf.Min(r, g, b)
+        Dim delta As Single = max - min
+        Dim alpha As Single = color.A / 255.0F
+        Dim lightness As Single = (min + max) / 2
+        Dim saturation As Single = 0F
+        saturation = If(delta <> 0F, (delta / (1 - Math.Abs(2 * lightness - 1))), saturation)
+        Dim hue As Single = 0F
+        If delta <> 0F Then
+            hue = If(max = r, 60.0F * (((g - b) / delta) Mod 6.0F), hue)
+            hue = If(max = g, 60.0F * (((b - r) / delta) + 2.0F), hue)
+            hue = If(max = b, 60.0F * (((r - g) / delta) + 4.0F), hue)
+        End If
+        Return New ColorHSL(Mathf.RoundToInt(hue), saturation, lightness, alpha)
+    End Operator
+
+    Public Shared Operator =(colorA As ColorHSL, colorB As ColorHSL) As Boolean
+        Return colorA.Equals(colorB)
+    End Operator
+
+    Public Shared Operator <>(colorA As ColorHSL, colorB As ColorHSL) As Boolean
+        Return Not colorA.Equals(colorB)
+    End Operator
+
+    Public Function AddHue(offset As Integer) As ColorHSL
+        Return New ColorHSL(H + offset, S, L, A)
+    End Function
+
+    Public Function AddSaturation(offset As Single) As ColorHSL
+        Return New ColorHSL(H, S + offset, L, A)
+    End Function
+
+    Public Function AddLuminance(offset As Single) As ColorHSL
+        Return New ColorHSL(H, S, L + offset, A)
+    End Function
+
+    Public Function AddAlpha(offset As Single) As ColorHSL
+        Return New ColorHSL(H, S, L, A + offset)
+    End Function
+
+    Public Overrides Function Equals(obj As Object) As Boolean
+        Dim objColor = CType(obj, ColorHSL)
+        Return H = objColor.H AndAlso S = objColor.S AndAlso L = objColor.L AndAlso A = objColor.A
+    End Function
+
+    Public Function SetHue(value As Integer) As ColorHSL
+        Return New ColorHSL(value, S, L, A)
+    End Function
+
+    Public Function SetSaturation(value As Single) As ColorHSL
+        Return New ColorHSL(H, value, L, A)
+    End Function
+
+    Public Function SetLuminance(value As Single) As ColorHSL
+        Return New ColorHSL(H, S, value, A)
+    End Function
+
+    Public Function SetAlpha(value As Single) As ColorHSL
+        Return New ColorHSL(H, S, L, value)
+    End Function
+
+    Public Function ToColor() As Color
+        Return CType(Me, Color)
+    End Function
+
+    Public Function ToHTML() As String
+        Return ColorTranslator.ToHtml(Me)
+    End Function
+
+    Public Overrides Function ToString() As String
+        Return String.Format($"HSLA({H:0}, {S:0.00}, {L:0.00}, {A:0.00})")
+    End Function
+End Structure
+
+Public Class Mathf
+    Public Shared Function Clamp(value As Integer, min As Integer, max As Integer) As Integer
+        If value < min Then
+            value = min
+        ElseIf value > max Then
+            value = max
+        End If
+        Return value
+    End Function
+
+    Public Shared Function Clamp(value As Single, min As Single, max As Single) As Single
+        If value < min Then
+            value = min
+        ElseIf value > max Then
+            value = max
+        End If
+        Return value
+    End Function
+
+    Public Shared Function Clamp01(value As Single) As Single
+        If value < 0F Then
+            value = 0F
+        ElseIf value > 1.0F Then
+            value = 1.0F
+        End If
+        Return value
+    End Function
+
+    Public Shared Function Min(a As Single, b As Single) As Single
+        Return If((a >= b), b, a)
+    End Function
+
+    Public Shared Function Min(ParamArray values As Single()) As Single
+        Dim num As Integer = values.Length
+        Dim result As Single
+        If num = 0 Then
+            result = 0F
+        Else
+            Dim num2 As Single = values(0)
+            For i As Integer = 1 To num - 1
+                If values(i) < num2 Then
+                    num2 = values(i)
+                End If
+            Next
+            result = num2
+        End If
+        Return result
+    End Function
+
+    Public Shared Function Min(a As Integer, b As Integer) As Integer
+        Return If((a >= b), b, a)
+    End Function
+
+    Public Shared Function Min(ParamArray values As Integer()) As Integer
+        Dim num As Integer = values.Length
+        Dim result As Integer
+        If num = 0 Then
+            result = 0
+        Else
+            Dim num2 As Integer = values(0)
+            For i As Integer = 1 To num - 1
+                If values(i) < num2 Then
+                    num2 = values(i)
+                End If
+            Next
+            result = num2
+        End If
+        Return result
+    End Function
+
+    Public Shared Function Max(a As Single, b As Single) As Single
+        Return If((a <= b), b, a)
+    End Function
+
+    Public Shared Function Max(ParamArray values As Single()) As Single
+        Dim num As Integer = values.Length
+        Dim result As Single
+        If num = 0 Then
+            result = 0F
+        Else
+            Dim num2 As Single = values(0)
+            For i As Integer = 1 To num - 1
+                If values(i) > num2 Then
+                    num2 = values(i)
+                End If
+            Next
+            result = num2
+        End If
+        Return result
+    End Function
+
+    Public Shared Function Max(a As Integer, b As Integer) As Integer
+        Return If((a <= b), b, a)
+    End Function
+
+    Public Shared Function Max(ParamArray values As Integer()) As Integer
+        Dim num As Integer = values.Length
+        Dim result As Integer
+        If num = 0 Then
+            result = 0
+        Else
+            Dim num2 As Integer = values(0)
+            For i As Integer = 1 To num - 1
+                If values(i) > num2 Then
+                    num2 = values(i)
+                End If
+            Next
+            result = num2
+        End If
+        Return result
+    End Function
+
+    Public Shared Function RoundToInt(value As Single) As Integer
+        Return CInt(Math.Round(value))
+    End Function
 End Class

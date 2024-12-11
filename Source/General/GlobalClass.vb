@@ -3,6 +3,7 @@ Imports System.Collections.ObjectModel
 Imports System.Drawing.Imaging
 Imports System.Globalization
 Imports System.Management.Automation
+Imports System.Management.Automation.Language
 Imports System.Runtime.ExceptionServices
 Imports System.Security.Principal
 Imports System.Text
@@ -29,17 +30,21 @@ Public Class GlobalClass
     Property StopAfterCurrentJob As Boolean
     Property ActiveForm As Form
 
+    Event AfterJobAdded()
     Event AfterJobFailed()
     Event AfterJobMuxed()
     Event AfterJobProcessed()
     Event AfterJobsProcessed()
     Event AfterProjectLoaded()
     Event AfterProjectOrSourceLoaded()
+    Event AfterSourceOpened()
     Event AfterSourceLoaded()
     Event AfterVideoEncoded()
     Event ApplicationExit()
+    Event BeforeJobAdding()
     Event BeforeJobProcessed()
     Event BeforeProcessing()
+    Event WhileProcessing(commandLine As String, percentage As Single, lastProgress As String)
 
     Sub WriteDebugLog(value As String)
         If s?.WriteDebugLog Then
@@ -76,7 +81,7 @@ Public Class GlobalClass
     End Function
 
     Sub LoadPowerShellScripts()
-        For Each dirPath In {Folder.Apps + "Scripts", Folder.Scripts + "Auto Load"}
+        For Each dirPath In {Path.Combine(Folder.Apps, "Scripts"), Folder.Scripts + "Auto Load"}
             If dirPath.DirExists Then
                 For Each fp In Directory.GetFiles(dirPath, "*.ps1")
                     g.DefaultCommands.ExecutePowerShellFile(fp)
@@ -91,7 +96,7 @@ Public Class GlobalClass
     End Function
 
     Function IsWindowsTerminalAvailable() As Boolean
-        Return File.Exists(Folder.AppDataLocal + "Microsoft\WindowsApps\wt.exe")
+        Return File.Exists(Path.Combine(Folder.AppDataLocal, "Microsoft", "WindowsApps", "wt.exe"))
     End Function
 
     Sub RunCodeInTerminal(code As String)
@@ -134,24 +139,12 @@ Public Class GlobalClass
 
     Sub ShellExecute(fileName As String, Optional arguments As String = Nothing)
         Try
-            If Not fileName.StartsWith("http") AndAlso fileName.Ext.EqualsAny("htm", "html") Then
-                Dim browser = g.GetAppPathForExtension("htm", "html")
+            Dim psi = New ProcessStartInfo(fileName.Escape) With {
+                .UseShellExecute = True,
+                .Arguments = arguments
+            }
 
-                If Not browser.FileName.EqualsAny("chrome.exe", "firefox.exe") Then
-                    browser = "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
-                End If
-
-                If Not browser.FileExists Then
-                    browser = Package.FindEverywhere({"chrome.exe", "firefox.exe"})
-                End If
-
-                If browser.FileExists Then
-                    arguments = fileName.Escape
-                    fileName = browser
-                End If
-            End If
-
-            Process.Start(fileName, arguments)?.Dispose()
+            Process.Start(psi)?.Dispose()
         Catch ex As Exception
             g.ShowException(ex, "Failed to start process", "Filename:" + BR2 + fileName + BR2 + "Arguments:" + BR2 + arguments)
         End Try
@@ -288,8 +281,8 @@ Public Class GlobalClass
                     Exit Sub
                 End If
 
-                g.MainForm.OpenVideoSourceFiles(p.SourceFiles, True)
-                g.ProjectPath = p.TempDir + p.TargetFile.Base + ".srip"
+                g.MainForm.OpenVideoSourceFiles(p.SourceFiles, True, s.ErrorMessageTimeout)
+                g.ProjectPath = Path.Combine(p.TempDir, p.TargetFile.Base + ".srip")
                 p.BatchMode = False
                 g.MainForm.SaveProjectPath(g.ProjectPath)
             Else
@@ -304,52 +297,49 @@ Public Class GlobalClass
             Log.WriteEnvironment()
             Log.WriteConfiguration()
 
-            Log.WriteHeader("Media Info Source File")
-            For Each i In p.SourceFiles
-                Log.WriteLine(i)
-            Next
-            Log.WriteLine(BR + MediaInfo.GetSummary(p.SourceFile))
+            Dim summary = MediaInfo.GetSummary(p.SourceFile)
+            If Not Log.ToString().Contains(summary) Then
+                Log.WriteHeader("Media Info Source File")
+                For Each i In p.SourceFiles
+                    Log.WriteLine(i)
+                Next
+                Log.WriteLine(BR + MediaInfo.GetSummary(p.SourceFile))
+            End If
 
             Log.WriteHeader($"{p.Script.Engine} Script")
             Log.WriteLine(p.Script.GetFullScript)
 
-            Dim err = p.Script.GetError
-
-            If err <> "" Then
-                Throw New ErrorAbortException($"{p.Script.Engine} Script Error", err)
+            p.Script.Synchronize(False, False)
+            If p.Script.Error <> "" Then
+                Throw New ErrorAbortException($"{p.Script.Engine} Script Error", p.Script.Error)
             End If
 
             Log.WriteHeader("Source Script Info")
             Log.WriteLine(p.SourceScript.GetInfo().GetInfoText(-1))
             Log.WriteHeader("Target Script Info")
-            Log.WriteLine(p.Script.GetInfo().GetInfoText(-1))
+            Log.WriteLine(p.Script.Info.GetInfoText(-1))
 
             g.MainForm.Hide()
 
             Dim actions As New List(Of Action)
 
-            If p.SkipAudioEncoding AndAlso File.Exists(p.Audio0.GetOutputFile) Then
-                p.Audio0.File = p.Audio0.GetOutputFile()
-            Else
-                actions.Add(Sub()
-                                Audio.Process(p.Audio0)
-                                p.Audio0.Encode()
-                            End Sub)
-            End If
-
-            If p.SkipAudioEncoding AndAlso File.Exists(p.Audio1.GetOutputFile) Then
-                p.Audio1.File = p.Audio1.GetOutputFile()
-            Else
-                actions.Add(Sub()
-                                Audio.Process(p.Audio1)
-                                p.Audio1.Encode()
-                            End Sub)
-            End If
-
             For Each track In p.AudioTracks
+                Dim temp = track.AudioProfile
+
+                If p.SkipAudioEncoding AndAlso File.Exists(track.AudioProfile.GetOutputFile()) Then
+                    track.AudioProfile.File = track.AudioProfile.GetOutputFile()
+                Else
+                    actions.Add(Sub()
+                                    Audio.Process(temp)
+                                    temp.Encode()
+                                End Sub)
+                End If
+            Next
+
+            For Each track In p.AudioFiles
                 Dim temp = track
 
-                If p.SkipAudioEncoding AndAlso File.Exists(track.GetOutputFile) Then
+                If p.SkipAudioEncoding AndAlso File.Exists(track.GetOutputFile()) Then
                     track.File = track.GetOutputFile()
                 Else
                     actions.Add(Sub()
@@ -374,7 +364,6 @@ Public Class GlobalClass
                     actions.Add(Sub()
                                     If p.VideoEncoder.BeforeEncoding() Then
                                         p.VideoEncoder.Encode()
-                                        p.VideoEncoder.AfterEncoding()
                                     End If
                                 End Sub)
                 End If
@@ -441,34 +430,51 @@ Public Class GlobalClass
             Log.WriteHeader("Job Complete")
             Log.WriteStats(startTime)
 
+            Dim deleteTempFiles = True
+
             If FileTypes.Video.Contains(p.TargetFile.Ext()) Then
+                Dim isCuttedRemux = TypeOf p.VideoEncoder Is NullEncoder AndAlso p.Ranges?.Any()
                 Dim hasFrames = MediaInfo.GetVideo(p.TargetFile, "FrameCount").ToInt(-1)
                 Dim shouldFrames = p.TargetFrames
+
                 If hasFrames <> shouldFrames Then
+                    g.MainForm.UpdateTargetParameters(p)
+                    shouldFrames = p.TargetFrames
+                End If
+
+                If hasFrames <> shouldFrames Then
+                    Dim difference = shouldFrames - hasFrames
+                    If deleteTempFiles AndAlso p.DeleteTempFilesOnFrameMismatchNegative >= 0 AndAlso difference > 0 Then deleteTempFiles = difference <= p.DeleteTempFilesOnFrameMismatchNegative
+                    If deleteTempFiles AndAlso p.DeleteTempFilesOnFrameMismatchPositive >= 0 AndAlso difference < 0 Then deleteTempFiles = -difference <= p.DeleteTempFilesOnFrameMismatchPositive
+
                     Log.WriteHeader("Frame Mismatch")
                     Log.WriteLine($"WARNING: Target file has {hasFrames} frames, but should have {shouldFrames} frames!")
-                    Log.WriteLine($"Encoding was probably terminated at {hasFrames / shouldFrames * 100:0.0}%!")
-                    If hasFrames > -1 AndAlso p.AbortOnFrameMismatch Then Throw New ErrorAbortException("Frame Mismatch", $"Target file has {hasFrames} frames, but should have {shouldFrames} frames!", p)
+                    If isCuttedRemux Then
+                        Log.WriteLine($"There is a mismatch of {difference} frames!")
+                    Else
+                        Log.WriteLine($"Encoding was probably terminated at {hasFrames / shouldFrames * 100:0.0}% with a mismatch of {difference} frames!")
+                    End If
+
+                    If hasFrames > -1 AndAlso p.AbortOnFrameMismatch AndAlso Not isCuttedRemux Then
+                        Throw New ErrorAbortException("Frame Mismatch", $"Target file has {hasFrames} frames, but should have {shouldFrames} frames!", p)
+                    End If
                 End If
             End If
 
             Log.Save()
 
             g.ArchiveLogFile(Log.GetPath())
-            g.DeleteTempFiles()
             g.RaiseAppEvent(ApplicationEvent.AfterJobProcessed)
             JobManager.RemoveJob(jobPath)
-
-            If jobPath.StartsWith(Folder.Settings + "Batch Projects\") Then
-                File.Delete(jobPath)
-            End If
+            If deleteTempFiles Then g.DeleteTempFiles()
+            If jobPath.StartsWith(Path.Combine(Folder.Settings, "Batch Projects")) Then File.Delete(jobPath)
         Catch ex As SkipException
             Log.Save()
             ProcController.Aborted = False
         Catch ex As ErrorAbortException
             Log.Save()
             g.RaiseAppEvent(ApplicationEvent.AfterJobFailed)
-            g.ShowException(ex, Nothing, Nothing, 50)
+            g.ShowException(ex, Nothing, Nothing, s.ErrorMessageTimeout)
             g.ShellExecute(g.GetTextEditorPath(), """" + p.Log.GetPath() + """")
             ProcController.Aborted = False
         End Try
@@ -478,29 +484,55 @@ Public Class GlobalClass
         Return Not (p.SkipVideoEncoding AndAlso TypeOf p.VideoEncoder IsNot NullEncoder AndAlso File.Exists(p.VideoEncoder.OutputPath))
     End Function
 
-    Sub DeleteTempFiles()
-        If s.DeleteTempFilesMode <> DeleteMode.Disabled AndAlso p.TempDir.EndsWith("_temp\") Then
-            Try
-                Dim moreJobsToProcessInTempDir = JobManager.GetJobs.Where(Function(a) a.Active AndAlso a.Path.Contains(p.TempDir))
+    Sub DeleteTempFiles(Optional proj As Project = Nothing)
+        If proj Is Nothing Then proj = p
 
-                If moreJobsToProcessInTempDir.Count = 0 Then
-                    If s.DeleteTempFilesMode = DeleteMode.RecycleBin Then
-                        FolderHelp.Delete(p.TempDir, RecycleOption.SendToRecycleBin)
-                    Else
-                        FolderHelp.Delete(p.TempDir)
-                    End If
-                End If
-            Catch
-            End Try
-        End If
+        If proj.DeleteTempFilesMode = DeleteMode.Disabled Then Return
+        If String.IsNullOrWhiteSpace(proj.TempDir) OrElse Not proj.TempDir.DirExists() OrElse Not New DirectoryInfo(proj.TempDir).Name.EndsWith("_temp") Then Return
+        If JobManager.GetJobs()?.Where(Function(a) a.Active AndAlso a.Path.Contains(proj.TempDir))?.Any() Then Return
+
+        Dim excludeSourcefile = True
+        Dim extensions As IEnumerable(Of String) = {}
+        Dim howToDelete = If(proj.DeleteTempFilesMode = DeleteMode.RecycleBin, RecycleOption.SendToRecycleBin, RecycleOption.DeletePermanently)
+
+        Select Case proj.DeleteTempFilesSelection
+            Case DeleteSelection.Everything
+                FolderHelp.Delete(proj.TempDir, howToDelete)
+                Exit Sub
+            Case DeleteSelection.Custom
+                excludeSourcefile = False
+                extensions = proj.DeleteTempFilesCustomSelection
+            Case DeleteSelection.Selective
+                If proj.DeleteTempFilesSelectiveSelection.HasFlag(DeleteSelectiveSelection.Projects) Then extensions = extensions.Union(FileTypes.Projects)
+                If proj.DeleteTempFilesSelectiveSelection.HasFlag(DeleteSelectiveSelection.Logs) Then extensions = extensions.Union(FileTypes.Logs)
+                If proj.DeleteTempFilesSelectiveSelection.HasFlag(DeleteSelectiveSelection.Scripts) Then extensions = extensions.Union(FileTypes.Scripts)
+                If proj.DeleteTempFilesSelectiveSelection.HasFlag(DeleteSelectiveSelection.Indexes) Then extensions = extensions.Union(FileTypes.Indexes)
+                If proj.DeleteTempFilesSelectiveSelection.HasFlag(DeleteSelectiveSelection.Videos) Then extensions = extensions.Union(FileTypes.Video.Except(FileTypes.Scripts))
+                If proj.DeleteTempFilesSelectiveSelection.HasFlag(DeleteSelectiveSelection.Audios) Then extensions = extensions.Union(FileTypes.Audio)
+                If proj.DeleteTempFilesSelectiveSelection.HasFlag(DeleteSelectiveSelection.Subtitles) Then extensions = extensions.Union(FileTypes.SubtitleExludingContainers)
+        End Select
+
+        Dim filesInTemp = Directory.GetFiles(proj.TempDir).AsEnumerable()
+        If excludeSourcefile Then filesInTemp = filesInTemp.Where(Function(x) x <> proj.SourceFile)
+        Dim filesToDelete As IEnumerable(Of String)
+
+        Select Case proj.DeleteTempFilesSelectionMode
+            Case SelectionMode.Exclude
+                filesToDelete = filesInTemp.Where(Function(x) Not extensions.Contains(x.Ext(), StringComparer.InvariantCultureIgnoreCase))
+            Case SelectionMode.Include
+                filesToDelete = filesInTemp.Where(Function(x) extensions.Contains(x.Ext(), StringComparer.InvariantCultureIgnoreCase))
+            Case Else
+        End Select
+
+        FileHelp.Delete(filesToDelete, howToDelete)
     End Sub
 
     ReadOnly Property StartupTemplatePath As String
         Get
-            Dim ret = Folder.Template + s.StartupTemplate + ".srip"
+            Dim ret = Path.Combine(Folder.Template, s.StartupTemplate + ".srip")
 
             If Not File.Exists(ret) Then
-                ret = Folder.Template + "Automatic Workflow.srip"
+                ret = Path.Combine(Folder.Template, "Automatic Workflow.srip")
                 s.StartupTemplate = "Automatic Workflow"
             End If
 
@@ -510,7 +542,7 @@ Public Class GlobalClass
 
     ReadOnly Property SettingsFile As String
         Get
-            Return Folder.Settings + "Settings.dat"
+            Return Path.Combine(Folder.Settings, "Settings.dat")
         End Get
     End Property
 
@@ -576,17 +608,15 @@ Public Class GlobalClass
     End Sub
 
     Function GetAudioProfileForScriptPlayback() As AudioProfile
-        If File.Exists(p.Audio0.File) AndAlso FileTypes.Audio.Contains(p.Audio0.File.Ext) Then
-            Return p.Audio0
-        ElseIf File.Exists(p.Audio1.File) AndAlso FileTypes.Audio.Contains(p.Audio1.File.Ext) Then
-            Return p.Audio1
-        End If
+        For Each track In p.AudioTracks
+            If File.Exists(track.AudioProfile.File) AndAlso FileTypes.Audio.Contains(track.AudioProfile.File.Ext()) Then
+                Return track.AudioProfile
+            End If
+        Next
     End Function
 
     Sub PlayScriptWithMPC(script As VideoScript, Optional cliArgs As String = Nothing)
-        If script Is Nothing Then
-            Exit Sub
-        End If
+        If script Is Nothing Then Exit Sub
 
         script.Synchronize()
         Dim playerPath = Package.MPC.Path
@@ -595,9 +625,7 @@ Public Class GlobalClass
             playerPath = Package.MPC.Path
         End If
 
-        If Not playerPath.FileExists Then
-            Exit Sub
-        End If
+        If Not playerPath.FileExists Then Exit Sub
 
         Dim args = ""
 
@@ -656,11 +684,72 @@ Public Class GlobalClass
     End Function
 
     Function ExtractTrackNameFromFilename(filename As String) As String
-        Return If(filename.Base().Contains(" {"), filename.Base().Right(" {").Left("}").UnescapeIllegalFileSysChars, Nothing)
+        Return If(filename.Base().Contains("{"), filename.Base().Right("{").LeftLast("}").UnescapeIllegalFileSysChars, Nothing)
+    End Function
+
+    Function ExtractLanguageFromPath(path As String) As Language
+        If String.IsNullOrWhiteSpace(path) Then Return Nothing
+
+        Dim ret As New Language(CultureInfo.InvariantCulture)
+        Dim filename = path.Base
+
+        Dim segments = {Regex.Replace(filename, "{.*}", ""),
+                        filename.RightLast("{").LeftLast("}")} _
+                        .Concat(filename.SplitNoEmpty(" ")) _
+                        .Concat(filename.SplitNoEmpty(".")) _
+                        .Concat(filename.SplitNoEmpty(",")) _
+                        .Concat(filename.SplitNoEmpty("_")) _
+                        .Concat(Regex.Matches(filename, "(?<=\().+?(?=\))", RegexOptions.IgnoreCase).Cast(Of Match).Select(Function(x) x.Value)) _
+                        .Concat(Regex.Matches(filename, "(?<=\[).+?(?=\])", RegexOptions.IgnoreCase).Cast(Of Match).Select(Function(x) x.Value)) _
+                        .Concat(Regex.Matches(filename, "(?<=[,\._]\().+?(?=\))", RegexOptions.IgnoreCase).Cast(Of Match).Select(Function(x) x.Value)) _
+                        .Concat(Regex.Matches(filename, "(?<=[,\._]\[).+?(?=\])", RegexOptions.IgnoreCase).Cast(Of Match).Select(Function(x) x.Value)) _
+                        .Concat({
+                            filename.RightLast("_")
+                        }).Reverse().Distinct().Reverse()
+
+        For Each extracted In segments
+            If String.IsNullOrWhiteSpace(extracted) Then Continue For
+            extracted = extracted.Trim()
+
+            For Each lng In Language.Languages.OrderBy(Function(x) x.Name.Length)
+                If lng.Name.Equals(extracted, StringComparison.InvariantCultureIgnoreCase) Then
+                    ret = lng
+                    Exit For
+                ElseIf lng.EnglishName.Equals(extracted, StringComparison.InvariantCultureIgnoreCase) Then
+                    ret = lng
+                    Exit For
+                ElseIf lng.ThreeLetterCode.Equals(extracted, StringComparison.InvariantCultureIgnoreCase) Then
+                    ret = lng
+                    Exit For
+                ElseIf lng.TwoLetterCode.Equals(extracted, StringComparison.InvariantCultureIgnoreCase) Then
+                    ret = lng
+                    Exit For
+                End If
+            Next
+        Next
+
+        If ret Is Nothing OrElse Not ret.IsDetermined Then
+            For Each lng In Language.Languages.OrderByDescending(Function(x) x.Name.Length)
+                If lng.EnglishName.Contains(" (") AndAlso path.ToUpperInvariant().Contains(lng.EnglishName.Left(" (").ToUpperInvariant()) Then
+                    ret = lng
+                End If
+
+                If path.ToUpperInvariant().Contains(lng.EnglishName.ToUpperInvariant()) Then
+                    ret = lng
+
+                    If filename.ToUpperInvariant().Contains(lng.EnglishName.ToUpperInvariant()) Then
+                        ret = lng
+                        Exit For
+                    End If
+                End If
+            Next
+        End If
+
+        Return ret
     End Function
 
     Function GetSourceBase() As String
-        Return If(p.TempDir.EndsWithEx("_temp\"), "temp", p.SourceFile.Base)
+        Return If(p.TempDir <> "" AndAlso New DirectoryInfo(p.TempDir).Name.EndsWithEx("_temp"), "temp", p.SourceFile.Base)
     End Function
 
     Sub ShowCode(title As String, content As String, Optional find As String = Nothing, Optional wordwrap As Boolean = False)
@@ -785,13 +874,13 @@ Public Class GlobalClass
                 mutex.ReleaseMutex()
             End Using
 
-            Dim backupPath = Folder.Settings + "Backup\"
+            Dim backupPath = Path.Combine(Folder.Settings, "Backup")
 
             If Not Directory.Exists(backupPath) Then
                 Directory.CreateDirectory(backupPath)
             End If
 
-            FileHelp.Copy(g.SettingsFile, backupPath + "Settings(v" + Application.ProductVersion + ").dat")
+            FileHelp.Copy(g.SettingsFile, Path.Combine(backupPath, "Settings(v" + Application.ProductVersion + ").dat"))
         Catch ex As Exception
             g.ShowException(ex)
         End Try
@@ -814,42 +903,45 @@ Public Class GlobalClass
         MainForm.Assistant()
     End Sub
 
-    Sub LoadAudioProfile0(profile As Profile)
-        Dim file = p.Audio0.File
-        Dim delay = p.Audio0.Delay
-        Dim language = p.Audio0.Language
-        Dim stream = p.Audio0.Stream
-        Dim streams = p.Audio0.Streams
-        p.Audio0 = DirectCast(ObjectHelp.GetCopy(profile), AudioProfile)
-        p.Audio0.File = file
-        p.Audio0.Language = language
-        p.Audio0.Stream = stream
-        p.Audio0.Streams = streams
-        p.Audio0.Delay = delay
-        g.MainForm.llAudioProfile0.Text = g.ConvertPath(p.Audio0.Name)
+    Sub LoadAudioProfile(profile As Profile, index As Integer)
+        If profile Is Nothing Then Exit Sub
+        If index < 0 Then Exit Sub
+        If index > p.AudioTracksAvailable - 1 Then Exit Sub
+        If p.AudioTracks Is Nothing Then Exit Sub
+        If p.AudioTracks.Count < 1 Then Exit Sub
+        If p.AudioTracks(index).AudioProfile Is Nothing Then Exit Sub
+
+        Dim audioTrack = p.AudioTracks(index)
+
+        Dim commentary = audioTrack.AudioProfile.Commentary
+        Dim [default] = audioTrack.AudioProfile.Default
+        Dim file = audioTrack.AudioProfile.File
+        Dim forced = audioTrack.AudioProfile.Forced
+        Dim delay = audioTrack.AudioProfile.Delay
+        Dim language = audioTrack.AudioProfile.Language
+        Dim stream = audioTrack.AudioProfile.Stream
+        Dim streamName = audioTrack.AudioProfile.StreamName
+        Dim streams = audioTrack.AudioProfile.Streams
+        audioTrack.AudioProfile = DirectCast(ObjectHelp.GetCopy(profile), AudioProfile)
+        audioTrack.AudioProfile.Commentary = commentary
+        audioTrack.AudioProfile.Default = [default]
+        audioTrack.AudioProfile.File = file
+        audioTrack.AudioProfile.Forced = forced
+        audioTrack.AudioProfile.Language = language
+        audioTrack.AudioProfile.Stream = stream
+        audioTrack.AudioProfile.StreamName = streamName
+        audioTrack.AudioProfile.Streams = streams
+        audioTrack.AudioProfile.Delay = delay
+
+        audioTrack.NameLabel.Refresh()
         g.MainForm.UpdateSizeOrBitrate()
         g.MainForm.Assistant()
     End Sub
 
-    Sub LoadAudioProfile1(profile As Profile)
-        Dim file = p.Audio1.File
-        Dim delay = p.Audio1.Delay
-        Dim language = p.Audio1.Language
-        Dim stream = p.Audio1.Stream
-        Dim streams = p.Audio1.Streams
-        p.Audio1 = DirectCast(ObjectHelp.GetCopy(profile), AudioProfile)
-        p.Audio1.File = file
-        p.Audio1.Language = language
-        p.Audio1.Stream = stream
-        p.Audio1.Streams = streams
-        p.Audio1.Delay = delay
-        g.MainForm.llAudioProfile1.Text = g.ConvertPath(p.Audio1.Name)
-        g.MainForm.UpdateSizeOrBitrate()
-        g.MainForm.Assistant()
-    End Sub
-
-    Sub RaiseAppEvent(ae As ApplicationEvent)
+    Sub RaiseAppEvent(ae As ApplicationEvent, Optional commandline As String = Nothing, Optional progress As Single = -1.0F, Optional progressline As String = Nothing)
         Select Case ae
+            Case ApplicationEvent.AfterJobAdded
+                RaiseEvent AfterJobAdded()
             Case ApplicationEvent.AfterJobFailed
                 RaiseEvent AfterJobFailed()
             Case ApplicationEvent.AfterJobMuxed
@@ -862,19 +954,25 @@ Public Class GlobalClass
                 RaiseEvent AfterProjectLoaded()
             Case ApplicationEvent.AfterProjectOrSourceLoaded
                 RaiseEvent AfterProjectOrSourceLoaded()
+            Case ApplicationEvent.AfterSourceOpened
+                RaiseEvent AfterSourceOpened()
             Case ApplicationEvent.AfterSourceLoaded
                 RaiseEvent AfterSourceLoaded()
             Case ApplicationEvent.AfterVideoEncoded
                 RaiseEvent AfterVideoEncoded()
             Case ApplicationEvent.ApplicationExit
                 RaiseEvent ApplicationExit()
+            Case ApplicationEvent.BeforeJobAdding
+                RaiseEvent BeforeJobAdding()
             Case ApplicationEvent.BeforeJobProcessed
                 RaiseEvent BeforeJobProcessed()
             Case ApplicationEvent.BeforeProcessing
                 RaiseEvent BeforeProcessing()
+            Case ApplicationEvent.WhileProcessing
+                RaiseEvent WhileProcessing(commandline, progress, progressline)
         End Select
 
-        Dim scriptPath = Folder.Scripts + ae.ToString + ".ps1"
+        Dim scriptPath = Path.Combine(Folder.Scripts, ae.ToString + ".ps1")
 
         If File.Exists(scriptPath) Then
             g.DefaultCommands.ExecutePowerShellFile(scriptPath)
@@ -885,7 +983,7 @@ Public Class GlobalClass
                 Dim matches = 0
 
                 For Each criteria In ec.CriteriaList
-                    criteria.PropertyString = Macro.Expand(criteria.Macro)
+                    criteria.PropertyString = Macro.ExpandWhileProcessing(criteria.Macro, p, commandline, progress, progressline)
 
                     If criteria.Eval Then
                         matches += 1
@@ -897,6 +995,7 @@ Public Class GlobalClass
                     ec.CommandParameters IsNot Nothing Then
 
                     Dim command = g.MainForm.CustomMainMenu.CommandManager.GetCommand(ec.CommandParameters.MethodName)
+                    Dim params = command.FixParameters(ec.CommandParameters.Parameters)
 
                     If s.LogEventCommand AndAlso p.SourceFile <> "" Then
                         Log.WriteHeader("Event Command: " + ec.Name)
@@ -905,7 +1004,13 @@ Public Class GlobalClass
                         Log.WriteLine(command.GetParameterHelp(ec.CommandParameters.Parameters))
                     End If
 
-                    g.MainForm.CustomMainMenu.CommandManager.Process(ec.CommandParameters)
+                    For i = 0 To params.Count - 1
+                        If TypeOf params(i) Is String Then
+                            params(i) = Macro.ExpandWhileProcessing(DirectCast(params(i), String), p, commandline, progress, progressline)
+                        End If
+                    Next
+
+                    g.MainForm.CustomMainMenu.CommandManager.ProcessPlusFixParams(command, params)
                 End If
             End If
         Next
@@ -919,7 +1024,7 @@ Public Class GlobalClass
                 p.TempDir = Macro.Expand(p.TempDir)
 
                 If p.TempDir = "" Then
-                    p.TempDir = If(p.SourceFile.Dir.EndsWith("_temp\"), p.SourceFile.Dir, p.SourceFile.Dir + p.SourceFile.Base + "_temp\")
+                    p.TempDir = If(New DirectoryInfo(p.SourceFile.Dir).Name.EndsWithEx("_temp"), p.SourceFile.Dir, Path.Combine(p.SourceFile.Dir, p.SourceFile.Base + p.SourceFile.ExtFull + "_temp"))
                 End If
 
                 p.TempDir = p.TempDir.FixDir
@@ -929,7 +1034,7 @@ Public Class GlobalClass
                         Directory.CreateDirectory(p.TempDir)
                     Catch
                         Try
-                            p.TempDir = p.SourceFile.DirAndBase + "_temp\"
+                            p.TempDir = p.SourceFile.DirAndBase + p.SourceFile.ExtFull + "_temp"
 
                             If Not Directory.Exists(p.TempDir) Then
                                 Directory.CreateDirectory(p.TempDir)
@@ -989,7 +1094,7 @@ Public Class GlobalClass
                 proc.SkipString = "Indexing, please wait..."
                 proc.Project = proj
                 proc.Priority = ProcessPriorityClass.Normal
-                proc.File = Package.ffms2.Directory + "ffmsindex.exe"
+                proc.File = Path.Combine(Package.ffms2.Directory, "ffmsindex.exe")
                 proc.Arguments = If(indexAudio, "-t -1 ", "") + sourcePath.LongPathPrefix.Escape + " " + cachePath.LongPathPrefix.Escape
                 proc.Start()
             End Using
@@ -997,7 +1102,9 @@ Public Class GlobalClass
     End Sub
 
     Function IsValidSource(Optional warn As Boolean = True) As Boolean
-        If p.SourceScript.GetFrameCount = 0 Then
+        p.SourceScript.Synchronize(False, False)
+
+        If p.SourceScript.Info.FrameCount = 0 Then
             If warn Then
                 MsgWarn("Failed to load source.")
             End If
@@ -1005,8 +1112,8 @@ Public Class GlobalClass
             Return False
         End If
 
-        If p.SourceScript.GetError <> "" Then
-            MsgError("Script Error", p.SourceScript.GetError)
+        If p.SourceScript.Error <> "" Then
+            MsgError("Script Error", p.SourceScript.Error)
             Return False
         End If
 
@@ -1033,7 +1140,7 @@ Public Class GlobalClass
             dirs.Add(p.TempDir)
         End If
 
-        If p.TempDir?.EndsWith("_temp\") Then
+        If Not String.IsNullOrWhiteSpace(p.TempDir) AndAlso New DirectoryInfo(p.TempDir).Name.EndsWithEx("_temp") Then
             dirs.Add(p.TempDir.Parent)
         End If
 
@@ -1067,11 +1174,9 @@ Public Class GlobalClass
     Private ExceptionHandled As Boolean
 
     Sub OnException(ex As Exception)
-        If ExceptionHandled Then
-            Exit Sub
-        Else
-            ExceptionHandled = True
-        End If
+        If ExceptionHandled Then Exit Sub
+
+        ExceptionHandled = True
 
         If TypeOf ex IsNot AbortException Then
             Try
@@ -1082,7 +1187,7 @@ Public Class GlobalClass
                         name = p.SourceFile.Base
                     End If
 
-                    g.MainForm.SaveProjectPath(p.SourceFile.Dir + "recovery.srip")
+                    g.MainForm.SaveProjectPath(Path.Combine(p.SourceFile.Dir, "recovery.srip"))
                 End If
 
                 g.SaveSettings()
@@ -1099,11 +1204,8 @@ Public Class GlobalClass
         End If
     End Sub
 
-    Sub ShowException(
-        ex As Exception,
-        Optional title As String = Nothing,
-        Optional content As String = Nothing,
-        Optional timeout As Integer = 0)
+    Sub ShowException(ex As Exception, Optional title As String = Nothing, Optional content As String = Nothing, Optional timeout As Integer = 0)
+        If timeout < 0 Then Exit Sub
 
         Try
             Using td As New TaskDialog(Of String)
@@ -1114,9 +1216,9 @@ Public Class GlobalClass
                     title)
 
                 td.Timeout = timeout
-                td.Content = (ex.Message + BR2 + content).Trim
+                td.Content = (ex.Message + BR2 + content).Trim()
                 td.Icon = TaskIcon.Error
-                td.ExpandedContent = ex.ToString
+                td.ExpandedContent = ex.ToString().Trim()
                 td.ShowCopyButton = True
                 td.AddButton("OK")
                 td.Show()
@@ -1130,13 +1232,13 @@ Public Class GlobalClass
 
     Sub ArchiveLogFile(path As String)
         Try
-            Dim logFolder = Folder.Settings + "Log Files\"
+            Dim logFolder = IO.Path.Combine(Folder.Settings, "Log Files")
 
             If Not Directory.Exists(logFolder) Then
                 Directory.CreateDirectory(logFolder)
             End If
 
-            FileHelp.Copy(path, logFolder + Date.Now.ToString("yyyy-MM-dd - HH.mm.ss") + " - " + path.FileName)
+            FileHelp.Copy(path, IO.Path.Combine(logFolder, Date.Now.ToString("yyyy-MM-dd - HH.mm.ss") + " - " + path.FileName))
             Dim di As New DirectoryInfo(logFolder)
 
             While di.GetFiles("*.log").Length > s.LogFileNum
@@ -1247,10 +1349,10 @@ Public Class GlobalClass
     End Sub
 
     Function EnableFilter(search As String) As Boolean
-        For Each filter In p.Script.Filters
-            If filter.Category = search Then
-                If Not filter.Active Then
-                    filter.Active = True
+        For Each Filter In p.Script.Filters
+            If Filter.Category = search Then
+                If Not Filter.Active Then
+                    Filter.Active = True
                     g.MainForm.FiltersListView.Load()
                 End If
 
@@ -1305,53 +1407,109 @@ Public Class GlobalClass
         End If
     End Sub
 
+    Sub CheckForModifiedDolbyVisionLevel5Data()
+        If p.HdrDolbyVisionMetadataFile IsNot Nothing Then
+            If p.HdrDolbyVisionMetadataFile.HasLevel5Changed Then
+                p.HdrDolbyVisionMetadataFile.RefreshLevel5Data()
+                'MainForm.AutoCrop()
+                'Dim newCrop = p.HdrDolbyVisionMetadataFile.Crop
+                'g.SetCrop(newCrop.Left, newCrop.Top, newCrop.Right, newCrop.Bottom, True, False)
+            End If
+        End If
+    End Sub
+
+    Sub SetCrop(left As Integer, top As Integer, right As Integer, bottom As Integer, direction As ForceOutputModDirection, Optional force As Boolean = False)
+        p.CropLeft = Math.Max(0, left)
+        p.CropTop = Math.Max(0, top)
+        p.CropRight = Math.Max(0, right)
+        p.CropBottom = Math.Max(0, bottom)
+
+        CorrectCropMod(direction, force)
+        MainForm.SetCropFilter()
+        MainForm.DisableCropFilter()
+        MainForm.Assistant()
+    End Sub
+
     Sub RunAutoCrop(progressAction As Action(Of Double))
+        If p.SourceScript Is Nothing Then Return
+        If String.IsNullOrWhiteSpace(p.SourceScript.Path) Then Return
+        If Not p.SourceScript.Path.FileExists() Then Return
+
         p.SourceScript.Synchronize(True, True, True)
 
-        If p.HdrDolbyVisionMetadataFile?.Crop <> Padding.Empty Then
-            p.CropLeft = p.HdrDolbyVisionMetadataFile.Crop.Left
-            p.CropTop = p.HdrDolbyVisionMetadataFile.Crop.Top
-            p.CropRight = p.HdrDolbyVisionMetadataFile.Crop.Right
-            p.CropBottom = p.HdrDolbyVisionMetadataFile.Crop.Bottom
-
-            CorrectCropMod(False, False)
+        If p.HdrDolbyVisionMetadataFile IsNot Nothing Then
+            Dim c = p.HdrDolbyVisionMetadataFile.Crop
+            SetCrop(c.Left, c.Top, c.Right, c.Bottom, ForceOutputModDirection.Decrease, True)
         Else
             Using server = FrameServerFactory.Create(p.SourceScript.Path)
-                Dim len = server.Info.FrameCount \ (s.CropFrameCount + 1)
-                Dim crops(s.CropFrameCount - 1) As AutoCrop
-                Dim pos As Integer
+                Dim info = server.Info
+                Dim frameCount = info.FrameCount
+                Dim frameRate = info.FrameRate
+                Dim startFrame = 0
+                Dim endFrame = frameCount - 1
+                If p.AutoCropFrameRangeMode = AutoCropFrameRangeMode.Automatic Then
+                    Dim threshold = CInt(VB6.Conversion.Fix(frameCount * 0.05))
+                    startFrame += threshold
+                    endFrame -= threshold
+                ElseIf p.AutoCropFrameRangeMode = AutoCropFrameRangeMode.ManualThreshold Then
+                    startFrame += p.AutoCropFrameRangeThresholdBegin
+                    endFrame -= p.AutoCropFrameRangeThresholdEnd
+                End If
+                Dim consideredFrames = endFrame - startFrame
+                Dim minFrames = 5
+                Dim interval = CInt(VB6.Conversion.Fix(frameRate * 60))
+                If p.AutoCropFrameSelectionMode = AutoCropFrameSelectionMode.FixedFrames Then
+                    interval = consideredFrames \ (p.AutoCropFixedFramesFrameSelection - 1)
+                ElseIf p.AutoCropFrameSelectionMode = AutoCropFrameSelectionMode.FrameInterval Then
+                    interval = p.AutoCropFrameIntervalFrameSelection
+                    If interval * minFrames > consideredFrames Then
+                        interval = CInt(VB6.Conversion.Fix(consideredFrames / minFrames))
+                    End If
+                ElseIf p.AutoCropFrameSelectionMode = AutoCropFrameSelectionMode.TimeInterval Then
+                    interval = CInt(VB6.Conversion.Fix(frameRate * p.AutoCropTimeIntervalFrameSelection))
+                    If interval * minFrames > consideredFrames Then
+                        interval = CInt(VB6.Conversion.Fix(consideredFrames / minFrames))
+                    End If
+                End If
+                Dim analyzeCount = (consideredFrames \ interval) + 1
+                Dim analyzeFrames(analyzeCount - 1) As Integer
+                Dim crops(analyzeCount - 1) As AutoCrop
+                Dim offset = (consideredFrames - ((analyzeCount - 1) * interval)) \ 2
+                startFrame += offset
+                Dim luminanceThreshold = p.AutoCropLuminanceThreshold / 100
 
-                For x = 1 To s.CropFrameCount
-                    progressAction?.Invoke((x - 1) / s.CropFrameCount * 100)
-                    pos = len * x
-
-                    Using bmp = BitmapUtil.CreateBitmap(server, pos)
-                        crops(x - 1) = AutoCrop.Start(bmp.Clone(New Rectangle(0, 0, bmp.Width, bmp.Height), PixelFormat.Format32bppRgb), pos)
-                    End Using
+                For i = 0 To analyzeCount - 1
+                    analyzeFrames(i) = Math.Min(startFrame + i * interval, endFrame)
                 Next
 
-                Dim leftCrops = crops.SelectMany(Function(arg) arg.Left).OrderBy(Function(arg) arg)
-                p.CropLeft = leftCrops(leftCrops.Count \ 10)
+                For i = 0 To analyzeCount - 1
+                    progressAction?.Invoke(i / analyzeCount * 100)
 
-                Dim topCrops = crops.SelectMany(Function(arg) arg.Top).OrderBy(Function(arg) arg)
-                p.CropTop = topCrops(topCrops.Count \ 10)
+                    Dim frame = analyzeFrames(i)
+                    Using bmp = BitmapUtil.CreateBitmap(server, frame)
+                        crops(i) = AutoCrop.Start(bmp.Clone(New Rectangle(0, 0, bmp.Width, bmp.Height), PixelFormat.Format32bppRgb), frame, luminanceThreshold)
+                    End Using
 
-                Dim rightCrops = crops.SelectMany(Function(arg) arg.Right).OrderBy(Function(arg) arg)
-                p.CropRight = rightCrops(rightCrops.Count \ 10)
+                    If crops(i).Left.Min = 0 AndAlso crops(i).Top.Min = 0 AndAlso crops(i).Right.Min = 0 AndAlso crops(i).Bottom.Min = 0 Then
+                        progressAction?.Invoke(100.0)
+                        Exit For
+                    End If
+                Next
 
-                Dim bottomCrops = crops.SelectMany(Function(arg) arg.Bottom).OrderBy(Function(arg) arg)
-                p.CropBottom = bottomCrops(bottomCrops.Count \ 10)
+                Dim left = crops.Where(Function(x) x IsNot Nothing).SelectMany(Function(arg) arg.Left).Min()
+                Dim top = crops.Where(Function(x) x IsNot Nothing).SelectMany(Function(arg) arg.Top).Min()
+                Dim right = crops.Where(Function(x) x IsNot Nothing).SelectMany(Function(arg) arg.Right).Min()
+                Dim bottom = crops.Where(Function(x) x IsNot Nothing).SelectMany(Function(arg) arg.Bottom).Min()
+
+                SetCrop(left, top, right, bottom, p.ForcedOutputModDirection, False)
             End Using
-
-            CorrectCropMod()
-        End If                
+        End If
     End Sub
 
     Sub SmartCrop()
         If Not p.Script.IsFilterActive("Resize") Then
             Exit Sub
         End If
-
         Dim tempLeft = p.CropLeft
         Dim tempRight = p.CropRight
 
@@ -1406,7 +1564,7 @@ Public Class GlobalClass
                 p.CropRight = 0
             End If
 
-            CorrectCropMod()
+            CorrectCropMod(p.ForcedOutputModDirection, False)
         End If
     End Sub
 
@@ -1434,21 +1592,17 @@ Public Class GlobalClass
         Return value.Trim
     End Function
 
-    Sub CorrectCropMod()
-        CorrectCropMod(False)
-    End Sub
-
     Sub ForceCropMod()
         If Not g.EnableFilter("Crop") Then
             p.Script.InsertAfter("Source", New VideoFilter("Crop", "Crop", "Crop(%crop_left%, %crop_top%, -%crop_right%, -%crop_bottom%)"))
         End If
 
-        CorrectCropMod(True)
+        CorrectCropMod(p.ForcedOutputModDirection, True)
     End Sub
 
-    Sub CorrectCropMod(force As Boolean, Optional increase As Boolean = True)
+    Sub CorrectCropMod(direction As ForceOutputModDirection, force As Boolean)
         If p.AutoCorrectCropValues OrElse force Then
-            If increase Then
+            If direction = ForceOutputModDirection.Increase Then
                 p.CropLeft += p.CropLeft Mod 2
                 p.CropRight += p.CropRight Mod 2
                 p.CropTop += p.CropTop Mod 2
@@ -1469,7 +1623,7 @@ Public Class GlobalClass
             Dim whalf = ((p.SourceWidth - p.CropLeft - p.CropRight) Mod modValue) \ 2
             Dim hhalf = ((p.SourceHeight - p.CropTop - p.CropBottom) Mod modValue) \ 2
 
-            If increase Then
+            If direction = ForceOutputModDirection.Increase Then
                 If p.CropLeft > p.CropRight Then
                     p.CropLeft += whalf - whalf Mod 2
                     p.CropRight += whalf + whalf Mod 2
@@ -1541,10 +1695,11 @@ Public Class GlobalClass
                         infoScript.AddFilter(New VideoFilter($"Import(""{script.Path}"")"))
                         Dim infoCode = $"Info(size={(script.GetInfo().Height * 0.05).ToInvariantString()})"
                         infoScript.AddFilter(New VideoFilter(infoCode))
-                        infoScript.Path = p.TempDir + p.TargetFile.Base + $"_info." + script.FileType
+                        infoScript.Path = Path.Combine(p.TempDir, p.TargetFile.Base + $"_info." + script.FileType)
 
-                        If infoScript.GetError() <> "" Then
-                            MsgError("Script Error", infoScript.GetError())
+                        Dim errorMsg = infoScript.GetError()
+                        If errorMsg <> "" Then
+                            MsgError("Script Error", errorMsg)
                             Exit Sub
                         End If
 
@@ -1562,12 +1717,13 @@ Public Class GlobalClass
                         g.RunCodeInTerminal($"""`n{Package.vspipe.Name} {Package.vspipe.Version}`n""; & '{Package.vspipe.Path}' --info '{script.Path}' -;""""")
                     Case "ClipInfo()"
                         Dim infoScript = script.GetNewScript
-                        infoScript.Path = p.TempDir + p.TargetFile.Base + "_info." + script.FileType
+                        infoScript.Path = Path.Combine(p.TempDir, p.TargetFile.Base + "_info." + script.FileType)
                         infoScript.AddFilter(New VideoFilter("clip = clip.resize.Bicubic(720, (720 / clip.width * clip.height) // 8 * 8)"))
                         infoScript.AddFilter(New VideoFilter("clip = core.text.ClipInfo(clip)"))
 
-                        If infoScript.GetError() <> "" Then
-                            MsgError("Script Error", infoScript.GetError())
+                        Dim errorMsg = infoScript.GetError()
+                        If errorMsg <> "" Then
+                            MsgError("Script Error", errorMsg)
                             Exit Sub
                         End If
 
@@ -1578,7 +1734,7 @@ Public Class GlobalClass
     End Sub
 
     Function IsDevelopmentPC() As Boolean
-        Return Application.StartupPath.EndsWith("\bin") OrElse Application.StartupPath.EndsWith("\bin-x86")
+        Return New DirectoryInfo(Application.StartupPath).Name.EndsWithEx("bin") OrElse New DirectoryInfo(Application.StartupPath).Name.EndsWithEx("bin-x86")
     End Function
 
     Sub RunTask(action As Action)
@@ -1688,7 +1844,7 @@ Public Class GlobalClass
         Return ret
     End Function
 
-    Function GetCodeFont(Optional size As Integer = 10) As Font
+    Function GetCodeFont(Optional size As Single = 10.0) As Font
         Return New Font(If(s.CodeFont = "", "Consolas", s.CodeFont), size * s.UIScaleFactor)
     End Function
 End Class

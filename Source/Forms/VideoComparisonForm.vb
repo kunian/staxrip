@@ -1,5 +1,6 @@
 ﻿
 Imports System.Drawing.Imaging
+Imports System.Text
 Imports Microsoft.VisualBasic.FileIO
 Imports StaxRip.UI
 
@@ -16,20 +17,20 @@ Public Class VideoComparisonForm
         InitializeComponent()
         RestoreClientSize(53, 36)
 
-        AllowDrop = True
-        KeyPreview = True
-        bnMenu.TabStop = False
-        TabControl.AllowDrop = True
-        TrackBar.NoMouseWheelEvent = True
-        tlpMain.AllowDrop = True
-
         Dim enabledFunc = Function() TabControl.SelectedTab IsNot Nothing
         Menu = New ContextMenuStripEx With {
             .Form = Me
         }
 
+        AllowDrop = True
+        KeyPreview = True
         bnMenu.ContextMenuStrip = Menu
+        bnMenu.TabStop = False
+        TabControl.AllowDrop = True
         TabControl.ContextMenuStrip = Menu
+        TabControl.ShowToolTips = True
+        TrackBar.NoMouseWheelEvent = True
+        tlpMain.AllowDrop = True
 
         Menu.Add("Add files to compare...", AddressOf Add, Keys.O, "Video files to compare, the file browser has multiselect enabled.")
         Menu.Add("Close selected tab", AddressOf Remove, Keys.Delete, enabledFunc)
@@ -51,9 +52,16 @@ Public Class VideoComparisonForm
         AddHandler tlpMain.DragDrop, AddressOf TabControlOnDragDrop
         AddHandler TabControl.DragOver, AddressOf TabControlOnDragOver
         AddHandler TabControl.DragDrop, AddressOf TabControlOnDragDrop
+        AddHandler TabControl.Selected, AddressOf TabControlOnSelected
 
         ApplyTheme()
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+    End Sub
+
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
     End Sub
 
     Sub OnThemeChanged(theme As Theme)
@@ -110,6 +118,12 @@ Public Class VideoComparisonForm
         End If
     End Sub
 
+    Sub TabControlOnSelected(sender As Object, e As TabControlEventArgs)
+        Dim tab = DirectCast(e.TabPage, VideoTab)
+
+        laFilePath.Text = tab.SourceFilePath
+    End Sub
+
     Sub Add()
         If Not Package.AviSynth.VerifyOK(True) Then Exit Sub
 
@@ -134,15 +148,16 @@ Public Class VideoComparisonForm
 
     End Sub
 
-    Sub Add(sourePath As String)
+    Sub Add(sourcePath As String)
         Dim tab = New VideoTab With {
             .AllowDrop = True,
             .Form = Me,
-            .BackColor = TabBackColor
+            .BackColor = TabBackColor,
+            .ToolTipText = sourcePath
         }
         tab.VideoPanel.ContextMenuStrip = TabControl.ContextMenuStrip
 
-        If tab.Open(sourePath) Then
+        If tab.Open(sourcePath) Then
             TabControl.TabPages.Add(tab)
 
             AddHandler tab.DragOver, AddressOf TabControlOnDragOver
@@ -154,10 +169,13 @@ Public Class VideoComparisonForm
         Else
             tab.Dispose()
         End If
+
+        Dim vt = DirectCast(TabControl.SelectedTab, VideoTab)
+        laFilePath.Text = vt?.SourceFilePath
     End Sub
 
-    Sub Add(sourePaths As String())
-        For Each path In sourePaths
+    Sub Add(sourcePaths As String())
+        For Each path In sourcePaths
             If File.Exists(path) Then
                 Add(path)
             End If
@@ -174,7 +192,16 @@ Public Class VideoComparisonForm
 
     Sub Save()
         For Each tab As VideoTab In TabControl.TabPages
-            Dim outputPath = tab.SourceFilePath.Dir & Pos & " " + tab.SourceFilePath.Base + ".png"
+            Dim outputPath = ""
+
+            Select Case s.SaveImageVideoComparisonFrameNumberPosition
+                Case ImageFrameNumberPosition.Prefix
+                    outputPath = Path.Combine(tab.SourceFilePath.Dir, $"{Pos:00000}_{tab.SourceFilePath.Base}.png")
+                Case ImageFrameNumberPosition.Suffix
+                    outputPath = Path.Combine(tab.SourceFilePath.Dir, $"{tab.SourceFilePath.Base}_{Pos:00000}.png")
+                Case Else
+                    Throw New NotSupportedException("VideoComparisonForm.Save()")
+            End Select
 
             Using bmp = tab.GetBitmap
                 bmp.Save(outputPath, ImageFormat.Png)
@@ -363,6 +390,7 @@ Public Class VideoComparisonForm
 
         Function Open(sourcePath As String) As Boolean
             Text = AdjustName(sourcePath.Base)
+            ToolTipText = sourcePath
             SourceFilePath = sourcePath
 
             Select Case sourcePath.Ext()
@@ -374,10 +402,10 @@ Public Class VideoComparisonForm
                     TempFilePath = sourcePath.DirAndBase + "_compare" + sourcePath.ExtFull
                 Case "png"
                     FileType = VideoComparisonFileType.Picture
-                    TempFilePath = Folder.Temp + Guid.NewGuid.ToString + ".avs"
+                    TempFilePath = Path.Combine(Folder.Temp, Guid.NewGuid.ToString + ".avs")
                 Case Else
                     FileType = VideoComparisonFileType.Video
-                    TempFilePath = Folder.Temp + Guid.NewGuid.ToString + ".avs"
+                    TempFilePath = Path.Combine(Folder.Temp, Guid.NewGuid.ToString + ".avs")
             End Select
 
             Dim script As New VideoScript With {
@@ -394,9 +422,9 @@ Public Class VideoComparisonForm
                     script.Filters.Add(New VideoFilter("Source", "Source", File.ReadAllText(sourcePath)))
                 Case VideoComparisonFileType.Video
                     If sourcePath.EndsWith("mp4") Then
-                        script.Filters.Add(New VideoFilter("LSMASHVideoSource(""" + sourcePath + "" + """, format = ""YV12"")"))
+                        script.Filters.Add(New VideoFilter("Source", "Source", "LSMASHVideoSource(""" + sourcePath + "" + """, format = ""YUV420P12"")"))
                     Else
-                        script.Filters.Add(New VideoFilter("FFVideoSource(""" + sourcePath + "" + """, colorspace = ""YV12"")"))
+                        script.Filters.Add(New VideoFilter("Source", "Source", "FFVideoSource(""" + sourcePath + "" + """, colorspace = ""YV12"")"))
                     End If
                     script.Filters.Add(New VideoFilter("SetMemoryMax(512)"))
                 Case VideoComparisonFileType.Picture
@@ -421,6 +449,7 @@ Public Class VideoComparisonForm
                     Throw New NotSupportedException("VideoComparisonFileType unhandled!")
             End Select
 
+            Indexing(sourcePath, script)
             script.Synchronize(True, True, True)
 
             Server = FrameServerFactory.Create(script.Path)
@@ -458,6 +487,45 @@ Public Class VideoComparisonForm
             Return True
         End Function
 
+        Sub Indexing(sourcePath As String, script As VideoScript)
+            If String.IsNullOrWhiteSpace(sourcePath) Then Exit Sub
+            If Not File.Exists(sourcePath) Then Exit Sub
+            If script Is Nothing Then Exit Sub
+
+            Dim sourceFilter = script.GetFilter("Source")
+            If sourceFilter Is Nothing Then Exit Sub
+
+            Dim codeLower = script.GetFilter("Source").Script.ToLowerInvariant
+
+            If codeLower.Contains("ffvideosource(") OrElse codeLower.Contains("ffms2.source") Then
+                If codeLower.Contains("cachefile") AndAlso p.TempDir <> "" AndAlso New DirectoryInfo(p.TempDir)?.Name?.EndsWithEx("_temp") Then
+                    g.ffmsindex(sourcePath, Path.Combine(p.TempDir, g.GetSourceBase + ".ffindex"))
+                Else
+                    g.ffmsindex(sourcePath, sourcePath + ".ffindex")
+                End If
+            ElseIf codeLower.Contains("lwlibavvideosource(") OrElse codeLower.Contains("lwlibavsource(") Then
+                If Not File.Exists(sourcePath + ".lwi") AndAlso
+                                Not File.Exists(Path.Combine(p.TempDir, g.GetSourceBase + ".lwi")) AndAlso
+                                File.Exists(script.Path) AndAlso Not FileTypes.VideoText.Contains(sourcePath.Ext) Then
+                    Using proc As New Proc
+                        proc.Header = "Index LWLibav"
+                        proc.Encoding = Encoding.UTF8
+                        proc.SkipString = "Creating lwi"
+                        If script.IsAviSynth Then
+                            proc.File = Package.ffmpeg.Path
+                            proc.Arguments = "-i " + script.Path.Escape + " -hide_banner"
+                        Else
+                            proc.File = Package.vspipe.Path
+                            proc.Arguments = script.Path.Escape + " NUL -i"
+                        End If
+
+                        proc.AllowedExitCodes = {0, 1}
+                        proc.Start()
+                    End Using
+                End If
+            End If
+        End Sub
+
         Sub Draw()
             Renderer.Position = Pos
             Renderer.Draw()
@@ -477,7 +545,7 @@ Public Class VideoComparisonForm
                 Else
                     Dim frameRate = If(Calc.IsValidFrameRate(Server.FrameRate), Server.FrameRate, 25)
                     Dim dt = DateTime.Today.AddSeconds(Pos / frameRate)
-                    Form.laInfo.Text = "Position: " & Pos & ", Time: " + dt.ToString("HH:mm:ss.fff") + ", Size: " & Server.Info.Width & " x " & Server.Info.Height
+                    Form.laInfo.Text = $"Position: {Pos,5}, Time: {dt:HH:mm:ss.fff}, Size: {Server.Info.Width} x {Server.Info.Height}"
                 End If
 
                 Form.laInfo.Refresh()

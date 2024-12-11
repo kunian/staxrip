@@ -11,7 +11,7 @@ Public Class Rav1e
     Property ParamsStore As New PrimitiveStore
 
     Sub New()
-        Name = "AV1 | Rav1e"
+        Name = "Rav1e"
     End Sub
 
     <NonSerialized>
@@ -29,6 +29,12 @@ Public Class Rav1e
         Set(value As Rav1eParams)
             ParamsValue = value
         End Set
+    End Property
+
+    Overrides ReadOnly Property Codec As String
+        Get
+            Return "av1"
+        End Get
     End Property
 
     Overrides ReadOnly Property OutputExt As String
@@ -119,7 +125,7 @@ Public Class Rav1e
         tester.IgnoredSwitches = "fullhelp output help psnr version verbose"
         tester.UndocumentedSwitches = "y4m help version verbose"
         tester.Package = Package.Rav1e
-        tester.CodeFile = Folder.Startup.Parent + "Encoding\Rav1e.vb"
+        tester.CodeFile = Path.Combine(Folder.Startup.Parent, "Encoding", "Rav1e.vb")
 
         Return tester.Test
     End Function

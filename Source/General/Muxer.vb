@@ -232,15 +232,15 @@ Public MustInherit Class Muxer
             End If
 
             If p.AddAttachmentsToMuxer Then
-                If TypeOf Me Is MkvMuxer AndAlso i.Contains("_attachment_") Then
+                If TypeOf Me Is MkvMuxer AndAlso i.Contains("attachment_") Then
                     Attachments.Add(i)
                 End If
             End If
         Next
 
         For Each iDir In {p.TempDir, p.TempDir.Parent}
-            For Each iExt In {"jpg", "png"}
-                Dim fp = iDir + "cover." + iExt
+            For Each iExt In {"jpg", "jpeg", "png"}
+                Dim fp = Path.Combine(iDir, "cover." + iExt)
 
                 If File.Exists(fp) Then
                     CoverFile = fp
@@ -333,23 +333,23 @@ Public Class MP4Muxer
             videoParams += Macro.Expand(VideoTrackName)
         End If
 
-        args.Append(" -add " + (p.VideoEncoder.OutputPath + "#video" + videoParams).Escape)
+        If p.VideoEncoder.GetChunks() = 1 Then
+            args.Append(" -add " + (p.VideoEncoder.OutputPath + "#video" + videoParams).Escape)
+        Else
+            args.Append(" -add " + (p.VideoEncoder.OutputPath.DirAndBase + "_chunk1" + p.VideoEncoder.OutputExtFull + "#video" + videoParams).Escape)
 
-        For x = 2 To 99
-            Dim fp = p.VideoEncoder.OutputPath.DirAndBase + "_chunk" & x & p.VideoEncoder.OutputExtFull
-
-            If fp.FileExists Then
+            For x = 2 To p.VideoEncoder.GetChunks()
+                Dim fp = p.VideoEncoder.OutputPath.DirAndBase + "_chunk" & x & p.VideoEncoder.OutputExtFull
                 args.Append(" -cat " + fp.Escape)
-            Else
-                Exit For
-            End If
-        Next
-
-        AddAudio(p.Audio0, args)
-        AddAudio(p.Audio1, args)
+            Next
+        End If
 
         For Each track In p.AudioTracks
-            AddAudio(track, args)
+            AddAudio(track.AudioProfile, args)
+        Next
+
+        For Each ap In p.AudioFiles
+            AddAudio(ap, args)
         Next
 
         ExpandMacros()
@@ -604,7 +604,7 @@ Public Class MkvMuxer
         For Each iDir In {p.TempDir, p.TempDir.Parent}
             For Each iBase In {"small_cover", "cover_land", "small_cover_land"}
                 For Each iExt In {".jpg", ".png"}
-                    Dim fp = iDir + iBase + iExt
+                    Dim fp = Path.Combine(iDir, iBase + iExt)
 
                     If File.Exists(fp) Then
                         AdditionalSwitches += " --attach-file " + fp.Escape
@@ -653,7 +653,7 @@ Public Class MkvMuxer
                       %>
                   </Tags>
 
-        Dim filepath = p.TempDir + p.TargetFile.Base + "_tags.xml"
+        Dim filepath = Path.Combine(p.TempDir, p.TargetFile.Base + "_tags.xml")
         xml.Save(filepath)
         TagFile = filepath
     End Sub
@@ -669,16 +669,14 @@ Public Class MkvMuxer
     Function GetArgs() As String
         Dim args = "-o " + p.TargetFile.LongPathPrefix.Escape
 
-        Dim stdout = ProcessHelp.GetConsoleOutput(Package.mkvmerge.Path, "--identify " +
-            p.VideoEncoder.OutputPath.LongPathPrefix.Escape)
-
+        Dim stdout = ProcessHelp.GetConsoleOutput(Package.mkvmerge.Path, "--identify " + p.VideoEncoder.OutputPath.LongPathPrefix.Escape)
         Dim id = Regex.Match(stdout, "Track ID (\d+): video").Groups(1).Value.ToInt
 
         If Not FileTypes.VideoOnly.Contains(p.VideoEncoder.OutputPath.Ext) Then
             args += " --no-audio --no-subs --no-chapters --no-attachments --no-track-tags --no-global-tags"
         End If
 
-        If VideoTrackLanguage.ThreeLetterCode <> "und" Then
+        If VideoTrackLanguage.ThreeLetterCode IsNot Nothing AndAlso VideoTrackLanguage.ThreeLetterCode <> "und" Then
             args += " --language " & id & ":" + VideoTrackLanguage.ThreeLetterCode
         End If
 
@@ -713,25 +711,24 @@ Public Class MkvMuxer
             End If
         End If
 
-        args += " " + p.VideoEncoder.OutputPath.LongPathPrefix.Escape
+        args += " "
+        If p.VideoEncoder.GetChunks() = 1 Then
+            args += p.VideoEncoder.OutputPath.LongPathPrefix.Escape
+        Else
+            For x = 1 To p.VideoEncoder.GetChunks()
+                If x > 1 Then args += " + "
 
-        If p.VideoEncoder.GetChunks() > 1 Then
-            For x = 2 To p.VideoEncoder.GetChunks()
                 Dim fp = p.VideoEncoder.OutputPath.DirAndBase + "_chunk" & x & p.VideoEncoder.OutputExtFull
-
-                If fp.FileExists Then
-                    args += " + " + fp.LongPathPrefix.Escape
-                Else
-                    Exit For
-                End If
+                args += fp.LongPathPrefix.Escape
             Next
         End If
 
-        AddAudioArgs(p.Audio0, args)
-        AddAudioArgs(p.Audio1, args)
+        For Each track In p.AudioTracks
+            AddAudioArgs(track.AudioProfile, args)
+        Next
 
-        For Each i In p.AudioTracks
-            AddAudioArgs(i, args)
+        For Each ap In p.AudioFiles
+            AddAudioArgs(ap, args)
         Next
 
         ExpandMacros()
@@ -835,8 +832,8 @@ Public Class MkvMuxer
         For Each i In Attachments
             Dim name = Path.GetFileName(i)
 
-            If i.Contains("_attachment_") Then
-                name = i.Right("_attachment_")
+            If i.Contains("attachment_") Then
+                name = i.Right("attachment_")
             End If
 
             args += $" --attachment-name {name.Escape} --attach-file {i.LongPathPrefix.Escape}"
@@ -922,7 +919,6 @@ Public Class MkvMuxer
                     "flv", "mov",
                     "264", "h264", "avc",
                     "265", "h265", "hevc", "hvc",
-                    "av1",
                     "ac3", "ec3", "eac3", "thd+ac3", "thd",
                     "mkv", "mka", "webm",
                     "mp2", "mpa", "mp3",
@@ -1011,21 +1007,21 @@ Public Class ffmpegMuxer
         Dim id As Integer
         Dim mapping = " -map 0:v"
 
-        For Each track In {p.Audio0, p.Audio1}
-            If TypeOf track IsNot NullAudioProfile AndAlso File.Exists(track.File) AndAlso
-                IsSupported(track.OutputFileType) Then
-
+        For Each track In p.AudioTracks
+            If TypeOf track.AudioProfile IsNot NullAudioProfile AndAlso File.Exists(track.AudioProfile.File) AndAlso IsSupported(track.AudioProfile.OutputFileType) Then
                 id += 1
-                args += " -i " + track.File.Escape
+                args += " -i " + track.AudioProfile.File.Escape
                 mapping += " -map " & id
 
-                If track.Stream IsNot Nothing Then
-                    mapping += ":" & track.Stream.StreamOrder
+                If track.AudioProfile.Stream IsNot Nothing Then
+                    mapping += ":" & track.AudioProfile.Stream.StreamOrder
                 End If
             End If
         Next
 
-        args += mapping + " -c:v copy -c:a copy -strict -2 " + p.TargetFile.Escape
+        args += mapping + " -c:v copy -c:a copy -strict -2 "
+        args += If(OutputFormat.EqualsAny("MOV", "MP4", "ISMV"), "-movflags +faststart ", "")
+        args += p.TargetFile.Escape
 
         Using proc As New Proc
             proc.Header = "Muxing to " + OutputFormat

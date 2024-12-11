@@ -11,6 +11,7 @@ Public MustInherit Class VideoEncoder
 
     MustOverride Sub Encode()
 
+    MustOverride ReadOnly Property Codec As String
     MustOverride ReadOnly Property OutputExt As String
 
     Overridable Property Bitrate As Integer
@@ -32,9 +33,27 @@ Public MustInherit Class VideoEncoder
         End Get
     End Property
 
-    Public Overridable ReadOnly Property ResizingStatus As String
+    Public Overridable ReadOnly Property IsUnequalResizingAllowed As Boolean
         Get
-            Return ""
+            Return True
+        End Get
+    End Property
+
+    Public Overridable ReadOnly Property IsResizingAllowed As Boolean
+        Get
+            Return True
+        End Get
+    End Property
+
+    Public Overridable ReadOnly Property DolbyVisionMetadataPath As String
+        Get
+            Return Nothing
+        End Get
+    End Property
+
+    Public Overridable ReadOnly Property Hdr10PlusMetadataPath As String
+        Get
+            Return Nothing
         End Get
     End Property
 
@@ -49,7 +68,7 @@ Public MustInherit Class VideoEncoder
             If TypeOf Muxer Is NullMuxer Then
                 Return p.TargetFile
             Else
-                Return p.TempDir + p.TargetFile.Base + "_out." + OutputExt
+                Return Path.Combine(p.TempDir, p.TargetFile.Base + "_out." + OutputExt)
             End If
         End Get
     End Property
@@ -61,9 +80,11 @@ Public MustInherit Class VideoEncoder
     End Function
 
     Overridable Function CanChunkEncode() As Boolean
+        Return False
     End Function
 
     Overridable Function GetChunks() As Integer
+        Return 1
     End Function
 
     Overridable Function GetChunkEncodeActions() As List(Of Action)
@@ -77,139 +98,17 @@ Public MustInherit Class VideoEncoder
     End Function
 
     Overridable Function AfterEncoding() As Boolean
-        If Not g.FileExists(OutputPath) Then Throw New ErrorAbortException("Encoder output file is missing", OutputPath)
+        Dim op = If(GetChunks() = 1, OutputPath, OutputPath.DirAndBase() + "_chunk1" + OutputPath.ExtFull)
 
-        Log.WriteLine(MediaInfo.GetSummary(OutputPath))
+        If Not g.FileExists(op) Then Throw New ErrorAbortException("Encoder output file is missing", op)
+
+        Log.WriteLine(MediaInfo.GetSummary(op))
         Log.Save()
 
         Return True
     End Function
 
-    Sub SetMetaData(sourceFile As String)
-        If Not p.ImportVUIMetadata Then Exit Sub
-
-        Dim cl = ""
-        Dim colour_primaries = MediaInfo.GetVideo(sourceFile, "colour_primaries")
-
-        Select Case colour_primaries
-            Case "BT.2020"
-                If colour_primaries.Contains("BT.2020") Then
-                    cl += " --colorprim bt2020"
-                End If
-            Case "BT.709"
-                If colour_primaries.Contains("BT.709") Then
-                    cl += " --colorprim bt709"
-                End If
-        End Select
-
-        Dim transfer_characteristics = MediaInfo.GetVideo(sourceFile, "transfer_characteristics")
-
-        Select Case transfer_characteristics
-            Case "PQ", "SMPTE ST 2084"
-                If transfer_characteristics.Contains("SMPTE ST 2084") Or transfer_characteristics.Contains("PQ") Then
-                    cl += " --transfer smpte2084"
-                End If
-            Case "BT.709"
-                If transfer_characteristics.Contains("BT.709") Then
-                    cl += " --transfer bt709"
-                End If
-            Case "HLG"
-                cl += " --transfer arib-std-b67"
-        End Select
-
-        Dim matrix_coefficients = MediaInfo.GetVideo(sourceFile, "matrix_coefficients")
-
-        Select Case matrix_coefficients
-            Case "BT.2020 non-constant"
-                If matrix_coefficients.Contains("BT.2020 non-constant") Then
-                    cl += " --colormatrix bt2020nc"
-                End If
-            Case "BT.709"
-                cl += " --colormatrix bt709"
-        End Select
-
-        Dim color_range = MediaInfo.GetVideo(sourceFile, "colour_range")
-
-        Select Case color_range
-            Case "Limited"
-                cl += " --range limited"
-            Case "Full"
-                cl += " --range full"
-        End Select
-
-        Dim ChromaSubsampling_Position = MediaInfo.GetVideo(sourceFile, "ChromaSubsampling_Position")
-        Dim chromaloc = New String(ChromaSubsampling_Position.Where(Function(c) c.IsDigit()).ToArray())
-
-        If Not String.IsNullOrEmpty(chromaloc) AndAlso chromaloc <> "0" Then
-            cl += $" --chromaloc {chromaloc}"
-        End If
-
-        Dim MasteringDisplay_ColorPrimaries = MediaInfo.GetVideo(sourceFile, "MasteringDisplay_ColorPrimaries")
-        Dim MasteringDisplay_Luminance = MediaInfo.GetVideo(sourceFile, "MasteringDisplay_Luminance")
-
-        If MasteringDisplay_ColorPrimaries <> "" AndAlso MasteringDisplay_Luminance <> "" Then
-            Dim luminanceMatch = Regex.Match(MasteringDisplay_Luminance, "min: ([\d\.]+) cd/m2, max: ([\d\.]+) cd/m2")
-
-            If luminanceMatch.Success Then
-                Dim luminanceMin = luminanceMatch.Groups(1).Value.ToDouble * 10000
-                Dim luminanceMax = luminanceMatch.Groups(2).Value.ToDouble * 10000
-
-                If MasteringDisplay_ColorPrimaries.Contains("Display P3") Then
-                    cl += " --output-depth 10"
-                    cl += $" --master-display ""G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L({luminanceMax},{luminanceMin})"""
-                    cl += " --hdr10"
-                    cl += " --repeat-headers"
-                    cl += " --range limited"
-                    cl += " --hrd"
-                    cl += " --aud"
-                End If
-
-                If MasteringDisplay_ColorPrimaries.Contains("DCI P3") Then
-                    cl += " --output-depth 10"
-                    cl += $" --master-display ""G(13250,34500)B(7500,3000)R(34000,16000)WP(15700,17550)L({luminanceMax},{luminanceMin})"""
-                    cl += " --hdr10"
-                    cl += " --repeat-headers"
-                    cl += " --range limited"
-                    cl += " --hrd"
-                    cl += " --aud"
-                End If
-
-                If MasteringDisplay_ColorPrimaries.Contains("BT.2020") Then
-                    cl += " --output-depth 10"
-                    cl += $" --master-display ""G(8500,39850)B(6550,2300)R(35400,14600)WP(15635,16450)L({luminanceMax},{luminanceMin})"""
-                    cl += " --hdr10"
-                    cl += " --repeat-headers"
-                    cl += " --range limited"
-                    cl += " --hrd"
-                    cl += " --aud"
-                End If
-
-
-                If Not String.IsNullOrWhiteSpace(p.Hdr10PlusMetadataFile) AndAlso p.Hdr10PlusMetadataFile.FileExists() Then
-                    cl += $" --dhdr10-info ""{p.Hdr10PlusMetadataFile}"""
-                End If
-
-                If Not String.IsNullOrWhiteSpace(p.HdrDolbyVisionMetadataFile?.Path) Then
-                    cl += $" --dolby-vision-rpu ""{p.HdrDolbyVisionMetadataFile.Path}"""
-
-                    Select Case p.HdrDolbyVisionMode
-                        Case DoviMode.Untouched, DoviMode.Mode4
-                            cl += $" --dolby-vision-profile 8.4"
-                        Case Else
-                            cl += $" --dolby-vision-profile 8.1"
-                    End Select
-                End If
-            End If
-        End If
-
-        Dim MaxCLL = MediaInfo.GetVideo(sourceFile, "MaxCLL").Trim.Left(" ").ToInt
-        Dim MaxFALL = MediaInfo.GetVideo(sourceFile, "MaxFALL").Trim.Left(" ").ToInt
-
-        If MaxCLL <> 0 OrElse MaxFALL <> 0 Then
-            cl += $" --max-cll ""{MaxCLL},{MaxFALL}"""
-        End If
-
-        ImportCommandLine(cl)
+    Overridable Sub SetMetaData(sourceFile As String)
     End Sub
 
     Overrides Function CreateEditControl() As Control
@@ -254,6 +153,41 @@ Public MustInherit Class VideoEncoder
             AutoSetImageSize()
         End If
     End Sub
+
+    Protected Function GetH265MaxBitrate(level As Single, highTier As Boolean) As Integer
+        If level < 1 Then Return 0
+
+        Select Case level
+            Case 1
+                Return If(highTier, 0, 128)
+            Case 2
+                Return If(highTier, 0, 1500)
+            Case 2.1
+                Return If(highTier, 0, 3000)
+            Case 3
+                Return If(highTier, 0, 6000)
+            Case 3.1
+                Return If(highTier, 0, 10000)
+            Case 4
+                Return If(highTier, 30000, 12000)
+            Case 4.1
+                Return If(highTier, 50000, 20000)
+            Case 5
+                Return If(highTier, 100000, 25000)
+            Case 5.1
+                Return If(highTier, 160000, 40000)
+            Case 5.2
+                Return If(highTier, 240000, 60000)
+            Case 6
+                Return If(highTier, 240000, 60000)
+            Case 6.1
+                Return If(highTier, 480000, 120000)
+            Case 6.2
+                Return If(highTier, 800000, 240000)
+            Case Else
+                Return 0
+        End Select
+    End Function
 
     Sub AutoSetImageSize()
         If p.VideoEncoder.AutoCompCheckValue > 0 AndAlso Calc.GetPercent <> 0 AndAlso p.Script.IsFilterActive("Resize") Then
@@ -347,7 +281,7 @@ Public MustInherit Class VideoEncoder
         Dim newPath = p.TargetFile.ChangeExt(Muxer.OutputExt)
 
         If p.SourceFile <> "" AndAlso newPath.ToLowerInvariant = p.SourceFile.ToLowerInvariant Then
-            newPath = newPath.Dir + newPath.Base + "_new" + newPath.ExtFull
+            newPath = Path.Combine(newPath.Dir, newPath.Base + "_new" + newPath.ExtFull)
         End If
 
         g.MainForm.tbTargetFile.Text = newPath
@@ -375,11 +309,14 @@ Public MustInherit Class VideoEncoder
     End Function
 
     Shared Function GetDefaults() As List(Of VideoEncoder)
-        Dim ret As New List(Of VideoEncoder)
-
-        ret.Add(New VvencffappEnc)
-        ret.Add(New x265Enc)
-        ret.Add(New x264Enc)
+        Dim ret As New List(Of VideoEncoder) From {
+            New VvencffappEnc(),
+            New x265Enc(),
+            New x264Enc(),
+            New SvtAv1Enc(),
+            New AOMEnc(),
+            New Rav1e()
+        }
 
         Dim nvEnc = New NVEnc()
         For x = 0 To nvEnc.Params.Codec.Options.Length - 1
@@ -395,10 +332,6 @@ Public MustInherit Class VideoEncoder
         For x = 0 To qsvEnc.Params.Codec.Options.Length - 1
             ret.Add(New QSVEnc(x))
         Next
-
-        ret.Add(New AOMEnc)
-        ret.Add(New Rav1e)
-        ret.Add(New SvtAv1Enc)
 
         Dim ffmpeg = New ffmpegEnc()
         For x = 0 To ffmpeg.Params.Codec.Options.Length - 1
@@ -487,6 +420,7 @@ Public MustInherit Class BasicVideoEncoder
             Dim a = g.MainForm.ParseCommandLine(commandLine)
 
             For x = 0 To a.Length - 1
+                Application.DoEvents()
                 For Each param In params.Items
                     If param.ImportAction IsNot Nothing AndAlso
                         param.GetSwitches.Contains(a(x)) AndAlso a.Length - 1 > x Then
@@ -500,16 +434,25 @@ Public MustInherit Class BasicVideoEncoder
                         Dim boolParam = DirectCast(param, BoolParam)
 
                         If boolParam.GetSwitches.Contains(a(x)) Then
-                            boolParam.Value = True
+                            Dim b = boolParam.DefaultValue
+                            Dim i = 0
+
+                            If boolParam.Switch = a(x) Then
+                                b = True
+                            ElseIf boolParam.NoSwitch = a(x) Then
+                                b = False
+                            ElseIf boolParam.IntegerValue AndAlso x < a.Length - 1 AndAlso Integer.TryParse(a(x + 1), i) Then
+                                b = CBool(i)
+                            End If
+
+                            boolParam.Value = b
                             params.RaiseValueChanged(param)
                             Exit For
                         End If
                     ElseIf TypeOf param Is NumParam Then
                         Dim numParam = DirectCast(param, NumParam)
 
-                        If numParam.GetSwitches.Contains(a(x)) AndAlso
-                            a.Length - 1 > x AndAlso a(x + 1).IsDouble Then
-
+                        If numParam.GetSwitches.Contains(a(x)) AndAlso a.Length - 1 > x AndAlso a(x + 1).IsDouble Then
                             numParam.Value = a(x + 1).ToDouble
                             params.RaiseValueChanged(param)
                             Exit For
@@ -518,15 +461,12 @@ Public MustInherit Class BasicVideoEncoder
                         Dim optionParam = DirectCast(param, OptionParam)
 
                         If optionParam.GetSwitches.Contains(a(x)) Then
-                            Dim exitFor As Boolean
-
                             If a.Length - 1 > x Then
                                 If optionParam.IntegerValue Then
                                     For xOpt = 0 To optionParam.Options.Length - 1
                                         If a(x + 1) = xOpt.ToString Then
                                             optionParam.Value = xOpt
                                             params.RaiseValueChanged(param)
-                                            exitFor = True
                                             Exit For
                                         End If
                                     Next
@@ -538,14 +478,9 @@ Public MustInherit Class BasicVideoEncoder
                                         If value.Trim(""""c).ToLowerInvariant = values(xOpt).ToLowerInvariant.Replace(" ", "") Then
                                             optionParam.Value = xOpt
                                             params.RaiseValueChanged(param)
-                                            exitFor = True
                                             Exit For
                                         End If
                                     Next
-                                End If
-
-                                If exitFor Then
-                                    Exit For
                                 End If
                             ElseIf a.Length - 1 = x Then
                                 If optionParam.Values IsNot Nothing Then
@@ -553,7 +488,6 @@ Public MustInherit Class BasicVideoEncoder
                                         If a(x) = optionParam.Values(xOpt) AndAlso optionParam.Values(xOpt).StartsWith("--") Then
                                             optionParam.Value = xOpt
                                             params.RaiseValueChanged(param)
-                                            exitFor = True
                                             Exit For
                                         End If
                                     Next
@@ -590,6 +524,12 @@ Public Class BatchEncoder
     Property CompCheckCommandLines As String = ""
 
     Property OutputFileTypeValue As String
+
+    Overrides ReadOnly Property Codec As String
+        Get
+            Return OutputFileTypeValue
+        End Get
+    End Property
 
     Overrides ReadOnly Property OutputExt As String
         Get
@@ -674,7 +614,7 @@ Public Class BatchEncoder
         End If
 
         script.Filters.Add(New VideoFilter("aaa", "aaa", code))
-        script.Path = (p.TempDir + p.TargetFile.Base + "_CompCheck." + script.FileType).ToShortFilePath
+        script.Path = Path.Combine(p.TempDir, p.TargetFile.Base + "_CompCheck." + script.FileType).ToShortFilePath
         script.Synchronize()
 
         Dim line = Macro.Expand(CompCheckCommandLines)
@@ -696,7 +636,7 @@ Public Class BatchEncoder
             End Try
         End Using
 
-        Dim bits = (New FileInfo(p.TempDir + p.TargetFile.Base + "_CompCheck." + OutputExt).Length) * 8
+        Dim bits = (New FileInfo(Path.Combine(p.TempDir, p.TargetFile.Base + "_CompCheck." + OutputExt)).Length) * 8
         p.Compressibility = (bits / script.GetFrameCount) / (p.TargetWidth * p.TargetHeight)
 
         OnAfterCompCheck()
@@ -719,14 +659,6 @@ Public Class NullEncoder
     End Sub
 
     Function GetSourceFile() As String
-        For Each i In {".h264", ".avc", ".h265", ".hevc", ".mpg", ".avi"}
-            If File.Exists(p.SourceFile.DirAndBase + "_out" + i) Then
-                Return p.SourceFile.DirAndBase + "_out" + i
-            ElseIf File.Exists(p.TempDir + p.TargetFile.Base + "_out" + i) Then
-                Return p.TempDir + p.TargetFile.Base + "_out" + i
-            End If
-        Next
-
         If FileTypes.VideoText.Contains(p.SourceFile.Ext) Then
             Return p.LastOriginalSourceFile
         Else
@@ -747,11 +679,17 @@ Public Class NullEncoder
                             Return sourceFile
                         End If
 
-                        Return p.TempDir + sourceFile.Base + streams(0).ExtFull
+                        Return Path.Combine(p.TempDir, sourceFile.Base + streams(0).ExtFull)
                 End Select
             End If
 
             Return sourceFile
+        End Get
+    End Property
+
+    Overrides ReadOnly Property Codec As String
+        Get
+            Return OutputExt
         End Get
     End Property
 

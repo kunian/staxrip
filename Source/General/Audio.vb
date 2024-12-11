@@ -61,17 +61,21 @@ Public Class Audio
 
         Cut(ap)
 
-        If TypeOf ap IsNot MuxAudioProfile AndAlso Not ap.IsInputSupported Then
+        If TypeOf ap IsNot MuxAudioProfile AndAlso ap.NeedConvert Then
             Convert(ap)
         End If
     End Sub
 
     Shared Function GetBaseNameForStream(filePath As String, stream As AudioStream) As String
-        Dim base = If(p.TempDir.EndsWithEx("_temp\") AndAlso filePath.Base.StartsWithEx(p.SourceFile.Base),
+        Dim base = If(p.TempDir?.DirExists() AndAlso New DirectoryInfo(p.TempDir).Name.EndsWith("_temp") AndAlso filePath.Base.StartsWithEx(p.SourceFile.Base),
             filePath.Base.Substring(p.SourceFile.Base.Length),
             filePath.Base)
 
         Dim ret = base + " ID" & (stream.Index + 1)
+
+        If stream.Language.TwoLetterCode <> "iv" Then
+            ret += $"_[{stream.Language.Name}] ({stream.Language.EnglishName})"
+        End If
 
         If stream.SBR Then
             ret += " SBR"
@@ -79,10 +83,6 @@ Public Class Audio
 
         If stream.Delay <> 0 Then
             ret += " " & stream.Delay & "ms"
-        End If
-
-        If stream.Language.TwoLetterCode <> "iv" Then
-            ret += " " + stream.Language.ToString
         End If
 
         If stream.Title <> "" Then
@@ -97,9 +97,7 @@ Public Class Audio
     End Function
 
     Shared Sub Convert(ap As AudioProfile)
-        If ap.File.Ext = ap.ConvertExt Then
-            Exit Sub
-        End If
+        If ap.File.Ext = ap.ConvertExt Then Exit Sub
 
         If ap.File.Ext = "avs" Then
             Dim outPath = ap.File.DirAndBase + "." + ap.ConvertExt
@@ -158,8 +156,8 @@ Public Class Audio
         ap.Delay = 0
         Dim d As New VideoScript
         d.Filters.AddRange(p.Script.Filters)
-        Dim wavPath = p.TempDir + ap.File.Base + "_cut_na.wav"
-        d.Path = p.TempDir + ap.File.Base + "_cut_na.avs"
+        Dim wavPath = Path.Combine(p.TempDir, ap.File.Base + "_cut_na.wav")
+        d.Path = Path.Combine(p.TempDir, ap.File.Base + "_cut_na.avs")
         d.Filters.Insert(1, New VideoFilter(GetNicAudioCode(ap)))
 
         If ap.Channels = 2 Then
@@ -205,8 +203,8 @@ Public Class Audio
         Dim d As New VideoScript
         d.Filters.AddRange(p.Script.Filters)
         d.RemoveFilter("Cutting")
-        Dim outPath = p.TempDir + ap.File.Base + "_DecodeNicAudio." + ap.ConvertExt
-        d.Path = p.TempDir + ap.File.Base + "_DecodeNicAudio.avs"
+        Dim outPath = Path.Combine(p.TempDir, ap.File.Base + "_DecodeNicAudio." + ap.ConvertExt)
+        d.Path = Path.Combine(p.TempDir, ap.File.Base + "_DecodeNicAudio.avs")
         d.Filters.Insert(1, New VideoFilter(GetNicAudioCode(ap)))
 
         If ap.Channels = 2 Then
@@ -282,7 +280,7 @@ Public Class Audio
             Exit Sub
         End If
 
-        Dim outPath = p.TempDir + ap.File.Base + "." + ap.ConvertExt
+        Dim outPath = Path.Combine(p.TempDir, ap.File.Base + "." + ap.ConvertExt)
         Dim args = ap.File.Escape + " " + outPath.Escape
 
         If ap.Channels = 6 Then
@@ -338,7 +336,7 @@ Public Class Audio
             base += ap.GetTrackID
         End If
 
-        Dim outPath = p.TempDir + base + "." + ap.ConvertExt
+        Dim outPath = Path.Combine(p.TempDir, base + "." + ap.ConvertExt)
 
         If ap.File = outPath Then
             outPath += "." + ap.ConvertExt
@@ -438,8 +436,8 @@ Public Class Audio
         Dim d As New VideoScript
         d.Filters.AddRange(p.Script.Filters)
         d.RemoveFilter("Cutting")
-        Dim outPath = p.TempDir + ap.File.Base + "_convDSS." + ap.ConvertExt
-        d.Path = p.TempDir + ap.File.Base + "_DecDSS.avs"
+        Dim outPath = Path.Combine(p.TempDir, ap.File.Base + "_convDSS." + ap.ConvertExt)
+        d.Path = Path.Combine(p.TempDir, ap.File.Base + "_DecDSS.avs")
         d.Filters.Insert(1, New VideoFilter("AudioDub(last,DirectShowSource(""" + ap.File + """, video=false))"))
 
         If ap.Channels = 2 Then
@@ -478,13 +476,13 @@ Public Class Audio
         End If
 
         ap.Delay = 0
-        Dim cachefile = p.TempDir + ap.File.Base + ".ffindex"
+        Dim cachefile = Path.Combine(p.TempDir, ap.File.Base + ".ffindex")
         g.ffmsindex(ap.File, cachefile)
         Dim d As New VideoScript
         d.Filters.AddRange(p.Script.Filters)
         d.RemoveFilter("Cutting")
-        Dim outPath = p.TempDir + ap.File.Base + "_convFFAudioSource." + ap.ConvertExt
-        d.Path = p.TempDir + ap.File.Base + "_DecodeFFAudioSource.avs"
+        Dim outPath = Path.Combine(p.TempDir, ap.File.Base + "_convFFAudioSource." + ap.ConvertExt)
+        d.Path = Path.Combine(p.TempDir, ap.File.Base + "_DecodeFFAudioSource.avs")
         d.Filters.Insert(1, New VideoFilter("AudioDub(last,FFAudioSource(""" + ap.File + """, cachefile=""" + cachefile + """))"))
 
         If ap.Channels = 2 Then
@@ -525,8 +523,8 @@ Public Class Audio
         ap.Delay = 0
         Dim d As New VideoScript
         d.Filters.AddRange(p.Script.Filters)
-        Dim wavPath = p.TempDir + ap.File.Base + "_cut_ds.wav"
-        d.Path = p.TempDir + ap.File.Base + "_cut_ds.avs"
+        Dim wavPath = Path.Combine(p.TempDir, ap.File.Base + "_cut_ds.wav")
+        d.Path = Path.Combine(p.TempDir, ap.File.Base + "_cut_ds.avs")
         d.Filters.Insert(1, New VideoFilter("AudioDub(last,DirectShowSource(""" + ap.File + """, video=false))"))
 
         If ap.Channels = 2 Then
@@ -565,12 +563,12 @@ Public Class Audio
         End If
 
         ap.Delay = 0
-        Dim cachefile = p.TempDir + ap.File.Base + ".ffindex"
+        Dim cachefile = Path.Combine(p.TempDir, ap.File.Base + ".ffindex")
         g.ffmsindex(ap.File, cachefile)
         Dim d As New VideoScript
         d.Filters.AddRange(p.Script.Filters)
-        Dim wavPath = p.TempDir + ap.File.Base + "_cut_ff.wav"
-        d.Path = p.TempDir + ap.File.Base + "_cut_ff.avs"
+        Dim wavPath = Path.Combine(p.TempDir, ap.File.Base + "_cut_ff.wav")
+        d.Path = Path.Combine(p.TempDir, ap.File.Base + "_cut_ff.avs")
         d.Filters.Insert(1, New VideoFilter("AudioDub(last,FFAudioSource(""" + ap.File + """, cachefile=""" + cachefile + """))"))
 
         If ap.Channels = 2 Then
@@ -614,7 +612,7 @@ Public Class Audio
             base += ap.GetTrackID
         End If
 
-        Dim aviPath = p.TempDir + base + "_cut_.avi"
+        Dim aviPath = Path.Combine(p.TempDir, base + "_cut_.avi")
         Dim d = (p.CutFrameCount / p.CutFrameRate).ToString("f9", CultureInfo.InvariantCulture)
         Dim r = p.CutFrameRate.ToString("f9", CultureInfo.InvariantCulture)
         Dim args = $"-f lavfi -i color=c=black:s=16x16:d={d}:r={r} -y -hide_banner -c:v ffv1 -g 1 " + aviPath.Escape
@@ -635,7 +633,7 @@ Public Class Audio
             Log.WriteLine(MediaInfo.GetSummary(aviPath))
         End If
 
-        Dim mkvPath = p.TempDir + base + "_cut_.mkv"
+        Dim mkvPath = Path.Combine(p.TempDir, base + "_cut_.mkv")
 
         Dim args2 = "-o " + mkvPath.Escape + " " + aviPath.Escape + " " + ap.File.Escape
         args2 += " --split parts-frames:" + p.Ranges.Select(Function(v) v.Start & "-" & (v.End + 1)).Join(",+")
@@ -703,17 +701,23 @@ function Down2(clip a)
     End Function
 
     Shared Function IsEncoderUsed(encoder As GuiAudioEncoder) As Boolean
-        If IsEncoderUsed(p.Audio0, encoder) OrElse IsEncoderUsed(p.Audio1, encoder) Then
-            Return True
+        If Not p.AudioTracks.NothingOrEmpty() Then
+            For Each track In p.AudioTracks
+                If IsEncoderUsed(track.AudioProfile, encoder) Then
+                    Return True
+                End If
+            Next
         End If
 
-        If Not p.AudioTracks.NothingOrEmpty Then
-            For Each ap In p.AudioTracks
+        If Not p.AudioFiles.NothingOrEmpty Then
+            For Each ap In p.AudioFiles
                 If IsEncoderUsed(ap, encoder) Then
                     Return True
                 End If
             Next
         End If
+
+        Return False
     End Function
 
     Shared Function IsEncoderUsed(ap As AudioProfile, encoder As GuiAudioEncoder) As Boolean
@@ -729,17 +733,23 @@ function Down2(clip a)
 
 
     Shared Function CommandContains(find As String) As Boolean
-        If p.Audio0.IsUsedAndContainsCommand(find) OrElse p.Audio1.IsUsedAndContainsCommand(find) Then
-            Return True
+        If Not p.AudioTracks.NothingOrEmpty() Then
+            For Each track In p.AudioTracks
+                If track.AudioProfile.IsUsedAndContainsCommand(find) Then
+                    Return True
+                End If
+            Next
         End If
 
-        If Not p.AudioTracks.NothingOrEmpty Then
-            For Each ap In p.AudioTracks
+        If Not p.AudioFiles.NothingOrEmpty Then
+            For Each ap In p.AudioFiles
                 If ap.IsUsedAndContainsCommand(find) Then
                     Return True
                 End If
             Next
         End If
+
+        Return False
     End Function
 End Class
 

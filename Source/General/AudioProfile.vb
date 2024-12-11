@@ -111,22 +111,28 @@ Public MustInherit Class AudioProfile
         Get
             Dim ret As String
 
-            If Stream Is Nothing Then
-                Dim streams = MediaInfo.GetAudioStreams(File)
+            If File?.FileExists() Then
+                If Stream Is Nothing Then
+                    Dim streams = MediaInfo.GetAudioStreams(File)
 
-                If streams.Count > 0 Then
-                    Dim firstStream = streams(0)
+                    If streams.Count > 0 Then
+                        Dim firstStream = streams(0)
 
-                    If firstStream.Bitrate = 0 AndAlso firstStream.Bitrate2 = 0 Then
-                        firstStream.Bitrate = CInt(Calc.GetBitrateFromFile(File, p.SourceSeconds))
+                        If firstStream.Bitrate = 0 AndAlso firstStream.Bitrate2 = 0 Then
+                            firstStream.Bitrate = CInt(Calc.GetBitrateFromFile(File, p.SourceSeconds))
+                        End If
+
+                        ret = GetAudioText(firstStream, File)
+                    Else
+                        ret = File.FileName
                     End If
-
-                    ret = GetAudioText(firstStream, File)
                 Else
-                    ret = File.FileName
+                    ret = $"{Stream.Name} ({File?.Ext()})"
                 End If
             Else
-                ret = Stream.Name + " (" + File.Ext + ")"
+                If Stream IsNot Nothing Then
+                    ret = $"{Stream.Name} ({p.SourceFile?.Ext()})"
+                End If
             End If
 
             Return ret
@@ -162,6 +168,13 @@ Public MustInherit Class AudioProfile
             Return Stream IsNot Nothing
         End Get
     End Property
+
+    Overridable Sub Reset()
+        File = ""
+        Language = New Language()
+        SourceSamplingRateValue = 0
+        Stream = Nothing
+    End Sub
 
     Overridable Sub Migrate()
         If Depth = 0 Then
@@ -253,31 +266,28 @@ Public MustInherit Class AudioProfile
         If File = "" Then Exit Sub
 
         If File <> p.LastOriginalSourceFile Then
-            For Each i In Language.Languages
-                If File.Contains(i.CultureInfo.EnglishName) Then
-                    Language = i
-                    Exit Sub
-                End If
-            Next
+            Language = g.ExtractLanguageFromPath(File)
         Else
-            For Each i In Streams
-                If FileTypes.AudioHQ.Contains(i.Ext) AndAlso i.Language.Equals(Language) Then
-                    Stream = i
-                    Exit For
-                End If
-            Next
-
-            If Stream Is Nothing Then
+            If Streams IsNot Nothing Then
                 For Each i In Streams
-                    If Not FileTypes.AudioHQ.Contains(i.Ext) AndAlso i.Language.Equals(Language) Then
+                    If FileTypes.AudioHQ.Contains(i.Ext) AndAlso i.Language.Equals(Language) Then
                         Stream = i
                         Exit For
                     End If
                 Next
-            End If
 
-            If Stream Is Nothing AndAlso Streams.Count > 0 Then
-                Stream = Streams(0)
+                If Stream Is Nothing Then
+                    For Each i In Streams
+                        If Not FileTypes.AudioHQ.Contains(i.Ext) AndAlso i.Language.Equals(Language) Then
+                            Stream = i
+                            Exit For
+                        End If
+                    Next
+                End If
+
+                If Stream Is Nothing AndAlso Streams.Count > 0 Then
+                    Stream = Streams(0)
+                End If
             End If
         End If
     End Sub
@@ -290,22 +300,31 @@ Public MustInherit Class AudioProfile
         Return TypeOf Me Is MuxAudioProfile
     End Function
 
+    Overridable Function HandlesDelay() As Boolean
+    End Function
+
+    Overridable ReadOnly Property NeedConvert As Boolean
+        Get
+            Return False
+        End Get
+    End Property
+
     Overridable Sub Encode()
     End Sub
 
     Overridable Sub EditProject()
     End Sub
 
-    Overridable Function HandlesDelay() As Boolean
-    End Function
-
     Function GetTrackIndex() As Integer
-        If Me Is p.Audio0 Then Return 0
-        If Me Is p.Audio1 Then Return 1
+        If Not p.AudioTracks.NothingOrEmpty() Then
+            For index = 0 To p.AudioTracks.Count - 1
+                If Me Is p.AudioTracks.ElementAt(index).AudioProfile Then Return index
+            Next
+        End If
 
-        For x = 0 To p.AudioTracks.Count - 1
-            If Me Is p.AudioTracks(x) Then
-                Return x + 2
+        For x = 0 To p.AudioFiles.Count - 1
+            If Me Is p.AudioFiles(x) Then
+                Return x + If(p.AudioTracks?.Count, 0)
             End If
         Next
     End Function
@@ -319,7 +338,7 @@ Public MustInherit Class AudioProfile
 
         If HasStream Then
             base = Audio.GetBaseNameForStream(File, Stream)
-        ElseIf p.TempDir.EndsWithEx("_temp\") AndAlso File.Base.StartsWithEx(p.SourceFile.Base) Then
+        ElseIf Not String.IsNullOrWhiteSpace(p.TempDir) AndAlso New DirectoryInfo(p.TempDir).Name.EndsWith("_temp") AndAlso File.Base.StartsWithEx(p.SourceFile.Base) Then
             base = File.Base.Substring(p.SourceFile.Base.Length).Trim
         Else
             base = File.Base
@@ -349,7 +368,7 @@ Public MustInherit Class AudioProfile
             End If
         End If
 
-        Dim outfile = p.TempDir + base + "." + OutputFileType.ToLowerInvariant
+        Dim outfile = Path.Combine(p.TempDir, base + "." + OutputFileType.ToLowerInvariant)
 
         If File = outfile Then
             outfile = outfile.Base + "_new." + OutputFileType.ToLowerInvariant
@@ -359,15 +378,12 @@ Public MustInherit Class AudioProfile
     End Function
 
     Shared Function GetProfiles() As IEnumerable(Of AudioProfile)
-        If p.AudioTracks.Count = 0 Then
-            Return {p.Audio0, p.Audio1}
-        Else
-            Dim ret As New List(Of AudioProfile)
-            ret.Add(p.Audio0)
-            ret.Add(p.Audio1)
-            ret.AddRange(p.AudioTracks)
-            Return ret
-        End If
+        Dim ret As New List(Of AudioProfile)
+
+        If Not p.AudioTracks.NothingOrEmpty() Then ret.AddRange(p.AudioTracks.Select(Function(x) x.AudioProfile))
+        If Not p.AudioFiles.NothingOrEmpty() Then ret.AddRange(p.AudioFiles)
+
+        Return ret
     End Function
 
     Function ExpandMacros(value As String) As String
@@ -551,12 +567,8 @@ Public Class MuxAudioProfile
 
     Public Overrides Property Channels As Integer
         Get
-            If Not Stream Is Nothing Then
-                If Stream.Channels > Stream.Channels2 Then
-                    Return Stream.Channels
-                Else
-                    Return Stream.Channels2
-                End If
+            If Stream IsNot Nothing Then
+                Return If(Stream.Channels > Stream.Channels2, Stream.Channels, Stream.Channels2)
             ElseIf IO.File.Exists(File) Then
 
                 If ChannelsValue = 0 Then
@@ -574,11 +586,7 @@ Public Class MuxAudioProfile
 
     Public Overrides Property OutputFileType As String
         Get
-            If Stream Is Nothing Then
-                Return File.Ext
-            Else
-                Return Stream.Ext
-            End If
+            Return If(Stream Is Nothing, File.Ext, Stream.Ext)
         End Get
         Set(value As String)
         End Set
@@ -659,7 +667,7 @@ Public Class MuxAudioProfile
             mbi.Button.Value = Language
             mbi.Button.SaveAction = Sub(value) Language = value
 
-            For Each i In Language.Languages
+            For Each i In Language.Languages.OrderBy(Function(x) x.EnglishName)
                 If i.IsCommon Then
                     mbi.Button.Add(i.ToString, i)
                 Else
@@ -704,6 +712,8 @@ Public Class MuxAudioProfile
             Return ret
         End Using
     End Function
+
+
 End Class
 
 <Serializable()>
@@ -769,13 +779,14 @@ Public Class GUIAudioProfile
 
     ReadOnly Property TargetSamplingRate As Integer
         Get
-            If Params.SamplingRate <> 0 Then
-                Return Params.SamplingRate
-            Else
-                Return SourceSamplingRate
-            End If
+            Return If(Params.SamplingRate <> 0, Params.SamplingRate, SourceSamplingRate)
         End Get
     End Property
+
+    Public Overrides Sub Reset()
+        MyBase.Reset()
+        ChannelsValue = 0        
+    End Sub
 
     Public Overrides Sub Migrate()
         MyBase.Migrate()
@@ -855,7 +866,7 @@ Public Class GUIAudioProfile
                     proc.SkipStrings = {"%"}
                 ElseIf cl.Contains("deezy") Then
                     proc.Package = Package.DeeZy
-                    proc.SkipStrings = {"%"}
+                    proc.SkipStrings = {"%", "frame=", "size="}
                 End If
 
                 proc.Start()
@@ -1291,7 +1302,11 @@ Public Class GUIAudioProfile
             sb.Append(" --delay " + (Delay / 1000).ToInvariantString)
         End If
 
-        If Params.Normalize Then
+        If Gain <> 0 Then
+            sb.Append(" --gain " & Gain.ToInvariantString)
+        End If
+
+        If Params.Normalize AndAlso Gain = 0 Then
             sb.Append(" --normalize")
         End If
 
@@ -1311,8 +1326,8 @@ Public Class GUIAudioProfile
             sb.Append(" --no-dither")
         End If
 
-        If Gain <> 0 Then
-            sb.Append(" --gain " & Gain.ToInvariantString)
+        If Params.qaacNoDelay Then
+            sb.Append(" --no-delay")
         End If
 
         If Params.CustomSwitches <> "" Then
@@ -1337,7 +1352,7 @@ Public Class GUIAudioProfile
             sb.Append(Package.ffmpeg.Filename.Base)
         End If
 
-        If Not Stream Is Nothing AndAlso Streams.Count > 1 Then
+        If Stream IsNot Nothing AndAlso Streams.Count > 1 Then
             sb.Append(" -map 0:a:" & Stream.Index)
         End If
 
@@ -1522,7 +1537,20 @@ Public Class GUIAudioProfile
             sb.Append(" " + GetOutputFile.Escape)
         End If
 
-        Return sb.ToString
+        Dim ret = sb.ToString
+        Dim matches = Regex.Matches(ret, " -af ([^ ]+)")
+        If matches.Count > 1 Then
+            Dim concated = ""
+            For i = matches.Count - 1 To 0 Step -1
+                Dim match = matches(i)
+                concated = $"{match.Groups(1)},{concated}"
+                ret = ret.Remove(match.Index, match.Length)
+            Next
+            concated = " -af " + concated.Trim(","c)
+            ret = ret.Insert(matches(0).Index, concated)
+        End If
+
+        Return ret
     End Function
 
     Function SupportsNormalize() As Boolean
@@ -1588,10 +1616,18 @@ Public Class GUIAudioProfile
     End Property
 
     Overrides Function HandlesDelay() As Boolean
-        If {GuiAudioEncoder.deezy, GuiAudioEncoder.eac3to, GuiAudioEncoder.qaac}.Contains(GetEncoder()) Then
-            Return True
-        End If
+        Return {GuiAudioEncoder.deezy, GuiAudioEncoder.eac3to, GuiAudioEncoder.qaac}.Contains(GetEncoder())
     End Function
+
+    Public Overrides ReadOnly Property NeedConvert As Boolean
+        Get
+            Dim enc = GetEncoder()
+
+            If Not IsInputSupported() Then Return True
+            If enc = GuiAudioEncoder.opusenc AndAlso (Params.Normalize OrElse Gain <> 0) Then Return True
+            Return False
+        End Get
+    End Property
 
     Function GetSupportedInput(gap As GuiAudioEncoder) As String()
         Select Case gap
@@ -1657,6 +1693,7 @@ Public Class GUIAudioProfile
 
         Property qaacHE As Boolean
         Property qaacLowpass As Integer
+        Property qaacNoDelay As Boolean
         Property qaacNoDither As Boolean
         Property qaacQuality As Integer = 2
         Property qaacRateMode As Integer

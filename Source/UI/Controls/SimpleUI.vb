@@ -26,6 +26,11 @@ Public Class SimpleUI
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
     End Sub
 
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        MyBase.Dispose(disposing)
+    End Sub
+
     Sub OnThemeChanged(theme As Theme)
         ApplyTheme(theme)
     End Sub
@@ -68,8 +73,8 @@ Public Class SimpleUI
                         Tree.ItemHeight = CInt(Tree.Height / (Tree.Nodes.Count)) - 2
                     End If
 
-                    If Tree.ItemHeight > CInt(Tree.Font.Height * 1.5) Then
-                        Tree.ItemHeight = CInt(Tree.Font.Height * 1.5)
+                    If Tree.ItemHeight > CInt(Tree.Font.Height * 1.3) Then
+                        Tree.ItemHeight = CInt(Tree.Font.Height * 1.3)
                     End If
                 End Sub
         End If
@@ -207,36 +212,55 @@ Public Class SimpleUI
         Return ret
     End Function
 
-    Function AddNumeric(parent As FlowLayoutPanelEx) As SimpleUINumEdit
+    Function AddNumeric(Optional parent As FlowLayoutPanelEx = Nothing) As SimpleUINumEdit
+        If parent Is Nothing Then parent = GetActiveFlowPage()
+
         Dim ret As New SimpleUINumEdit(Me)
+        AddHandler SaveValues, AddressOf ret.Save
         parent.Controls.Add(ret)
         Return ret
     End Function
 
     Function AddLabel(text As String) As SimpleUILabel
-        Return AddLabel(Nothing, text)
+        Return AddLabel(Nothing, text, {})
     End Function
 
-    Function AddLabel(parent As FlowLayoutPanelEx,
-                      text As String,
-                      Optional widthInFontHeights As Integer = 0) As SimpleUILabel
+    Function AddLabel(text As String, widthInFontHeights As Integer) As SimpleUILabel
+        Return AddLabel(Nothing, text, widthInFontHeights)
+    End Function
 
-        If parent Is Nothing Then
-            parent = GetActiveFlowPage()
-        End If
+    Function AddLabel(text As String, ParamArray fontStyles() As FontStyle) As SimpleUILabel
+        Return AddLabel(Nothing, text, 0, fontStyles)
+    End Function
+
+    Function AddLabel(text As String, widthInFontHeights As Integer, ParamArray fontStyles() As FontStyle) As SimpleUILabel
+        Return AddLabel(Nothing, text, widthInFontHeights, fontStyles)
+    End Function
+
+    Function AddLabel(parent As FlowLayoutPanelEx, text As String) As SimpleUILabel
+        Return AddLabel(parent, text, 0, {})
+    End Function
+
+    Function AddLabel(parent As FlowLayoutPanelEx, text As String, ParamArray fontStyles() As FontStyle) As SimpleUILabel
+        Return AddLabel(parent, text, 0, fontStyles)
+    End Function
+
+    Function AddLabel(parent As FlowLayoutPanelEx, text As String, widthInFontHeights As Integer, ParamArray fontStyles() As FontStyle) As SimpleUILabel
+        If parent Is Nothing Then parent = GetActiveFlowPage()
 
         Dim ret As New SimpleUILabel
         ret.Offset = widthInFontHeights
         ret.Text = text
+        If fontStyles?.Length > 0 Then
+            ret.Font = New Font(ret.Font, fontStyles.Aggregate(ret.Font.Style, Function(a, n) a Or n))
+        End If
         parent.Controls.Add(ret)
 
         Return ret
     End Function
 
     Function AddNum(Optional parent As FlowLayoutPanelEx = Nothing) As NumBlock
-        If parent Is Nothing Then
-            parent = GetActiveFlowPage()
-        End If
+        If parent Is Nothing Then parent = GetActiveFlowPage()
 
         Dim ret As New NumBlock(Me)
         ret.AutoSize = True
@@ -247,9 +271,7 @@ Public Class SimpleUI
     End Function
 
     Function AddText(Optional parent As FlowLayoutPanelEx = Nothing) As TextBlock
-        If parent Is Nothing Then
-            parent = GetActiveFlowPage()
-        End If
+        If parent Is Nothing Then parent = GetActiveFlowPage()
 
         Dim ret As New TextBlock(Me)
         ret.AutoSize = True
@@ -260,9 +282,7 @@ Public Class SimpleUI
     End Function
 
     Function AddTextMenu(Optional parent As FlowLayoutPanelEx = Nothing) As TextMenuBlock
-        If parent Is Nothing Then
-            parent = GetActiveFlowPage()
-        End If
+        If parent Is Nothing Then parent = GetActiveFlowPage()
 
         Dim ret As New TextMenuBlock(Me)
         ret.AutoSize = True
@@ -273,9 +293,7 @@ Public Class SimpleUI
     End Function
 
     Function AddColorPicker(Optional parent As FlowLayoutPanelEx = Nothing) As ColorPickerBlock
-        If parent Is Nothing Then
-            parent = GetActiveFlowPage()
-        End If
+        If parent Is Nothing Then parent = GetActiveFlowPage()
 
         Dim ret As New ColorPickerBlock(Me)
         ret.AutoSize = True
@@ -286,9 +304,7 @@ Public Class SimpleUI
     End Function
 
     Function AddButton(Optional parent As FlowLayoutPanelEx = Nothing) As ButtonBlock
-        If parent Is Nothing Then
-            parent = GetActiveFlowPage()
-        End If
+        If parent Is Nothing Then parent = GetActiveFlowPage()
 
         Dim ret As New ButtonBlock(Me)
         ret.AutoSize = True
@@ -298,9 +314,7 @@ Public Class SimpleUI
     End Function
 
     Function AddTextButton(Optional parent As FlowLayoutPanelEx = Nothing) As TextButtonBlock
-        If parent Is Nothing Then
-            parent = GetActiveFlowPage()
-        End If
+        If parent Is Nothing Then parent = GetActiveFlowPage()
 
         Dim ret As New TextButtonBlock(Me)
         ret.AutoSize = True
@@ -311,9 +325,7 @@ Public Class SimpleUI
     End Function
 
     Function AddMenu(Of T)(Optional parent As FlowLayoutPanelEx = Nothing) As MenuBlock(Of T)
-        If parent Is Nothing Then
-            parent = GetActiveFlowPage()
-        End If
+        If parent Is Nothing Then parent = GetActiveFlowPage()
 
         Dim ret As New MenuBlock(Of T)(Me)
         ret.AutoSize = True
@@ -331,10 +343,11 @@ Public Class SimpleUI
         Return ret
     End Function
 
-    Sub AddLine(parent As FlowLayoutPanelEx, Optional text As String = "")
+    Sub AddLine(parent As FlowLayoutPanelEx, Optional text As String = "", Optional marginTop As Integer = 12, Optional marginBottom As Integer = 7)
         Dim line As New SimpleUILineControl
         line.Text = text
         line.Expand = True
+        line.Margin = New Padding(0, marginTop, 0, marginBottom)
         parent.Controls.Add(line)
     End Sub
 
@@ -416,6 +429,11 @@ Public Class SimpleUI
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
         End Sub
 
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
+        End Sub
+
         Sub OnThemeChanged(theme As Theme)
             ApplyTheme(theme)
         End Sub
@@ -453,7 +471,7 @@ Public Class SimpleUI
         Property Expand As Boolean Implements ISimpleUIControl.Expand
 
         Protected Overrides Sub OnLayout(levent As LayoutEventArgs)
-            Height = FontHeight * 2
+            Height = FontHeight
             MyBase.OnLayout(levent)
         End Sub
     End Class
@@ -462,6 +480,7 @@ Public Class SimpleUI
         Inherits CheckBoxEx
 
         Property MarginLeft As Double
+        Property ValueChangedAction As Action(Of Boolean)
         Property SaveAction As Action(Of Boolean)
         Property HelpAction As Action
 
@@ -488,6 +507,7 @@ Public Class SimpleUI
         Protected Overrides Sub OnCheckedChanged(e As EventArgs)
             MyBase.OnCheckedChanged(e)
             SimpleUI.RaiseChangeEvent()
+            ValueChangedAction?.Invoke(Checked)
         End Sub
 
         Sub Save()

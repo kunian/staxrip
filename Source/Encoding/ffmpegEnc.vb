@@ -101,6 +101,12 @@ Public Class ffmpegEnc
         End Using
     End Sub
 
+    Overrides ReadOnly Property Codec As String
+        Get
+            Return Params.Codec.ValueText
+        End Get
+    End Property
+
     Overrides ReadOnly Property OutputExt() As String
         Get
             Select Case Params.Codec.OptionText
@@ -108,12 +114,16 @@ Public Class ffmpegEnc
                     Return "avi"
                 Case "ProRes", "R210", "V210"
                     Return "mov"
-                Case "VP8", "VP9"
+                Case "Theora"
+                    Return "ogg"
+                Case "VP | VP8", "VP | VP9"
                     Return "webm"
-                Case "x264"
+                Case "x264", "AMD | AMD AMF H.264", "Intel | Intel H.264", "Nvidia | Nvidia H.264"
                     Return "h264"
-                Case "x265"
+                Case "x265", "AMD | AMD AMF H.265", "Intel | Intel H.265", "Nvidia | Nvidia H.265"
                     Return "h265"
+                Case "AOM-AV1", "AMD | AMD AMF AV1", "Intel | Intel AV1", "Nvidia | Nvidia AV1"
+                    Return "ivf"
                 Case Else
                     Return "mkv"
             End Select
@@ -184,7 +194,7 @@ Public Class ffmpegEnc
             .AlwaysOn = True,
             .Options = {"x264", "x265", "AOM-AV1", "XviD", "MPEG-4", "Theora", "ProRes",
                         "R210", "V210", "UT Video", "FFV1", 
-                        "AMD | AMD AMF H264", "AMD | AMD AMF HEVC", "AMD | AMD AMF AV1",
+                        "AMD | AMD AMF H.264", "AMD | AMD AMF H.265", "AMD | AMD AMF AV1",
                         "Intel | Intel H.264", "Intel | Intel H.265", "Intel | Intel AV1",
                         "Nvidia | Nvidia H.264", "Nvidia | Nvidia H.265", "Nvidia | Nvidia AV1",
                         "VP | VP8", "VP | VP9"},
@@ -227,7 +237,7 @@ Public Class ffmpegEnc
                         Decoder, Codec, Mode,
                         New OptionParam With {.Name = "x264/x265 preset", .Text = "Preset", .Switch = "-preset", .Init = 5, .Options = {"Ultrafast", "Superfast", "Veryfast", "Faster", "Fast", "Medium", "Slow", "Slower", "Veryslow", "Placebo"}, .VisibleFunc = Function() Codec.OptionText.EqualsAny("x264", "x265")},
                         New OptionParam With {.Name = "x264/x265 tune", .Text = "Tune", .Switch = "-tune", .Options = {"None", "Film", "Animation", "Grain", "Stillimage", "Psnr", "Ssim", "Fastdecode", "Zerolatency"}, .VisibleFunc = Function() Codec.OptionText.EqualsAny("x264", "x265")},
-                        New OptionParam With {.Switch = "-profile:v", .Text = "Profile", .VisibleFunc = Function() Codec.OptionText = "ProRes", .Init = 3, .IntegerValue = True, .Options = {"Proxy", "LT", "Normal", "HQ"}},
+                        New OptionParam With {.Switch = "-profile:v", .Text = "Profile", .VisibleFunc = Function() Codec.OptionText = "ProRes", .Init = 2, .IntegerValue = True, .Options = {"Proxy", "LT", "Standard", "HQ"}},
                         New OptionParam With {.Switch = "-speed", .Text = "Speed", .AlwaysOn = True, .VisibleFunc = Function() Codec.OptionText.EqualsAny("VP8", "VP9"), .Options = {"6 - Fastest", "5 - Faster", "4 - Fast", "3 - Medium", "2 - Slow", "1 - Slower", "0 - Slowest"}, .Values = {"6", "5", "4", "3", "2", "1", "0"}, .Value = 5},
                         New OptionParam With {.Switch = "-cpu-used", .Text = "CPU Used", .Init = 1, .VisibleFunc = Function() Codec.OptionText = "AV1", .IntegerValue = True, .Options = {"0 - Slowest", "1 - Very Slow", "2 - Slower", "3 - Slow", "4 - Medium", "5 - Fast", "6 - Faster", "7 - Very Fast", "8 - Fastest"}},
                         New OptionParam With {.Switch = "-aq-mode", .Text = "AQ Mode", .VisibleFunc = Function() Codec.OptionText = "VP9", .Options = {"Disabled", "0", "1", "2", "3"}, .Values = {"Disabled", "0", "1", "2", "3"}},
@@ -275,7 +285,7 @@ Public Class ffmpegEnc
                     sb.Append(" -hwaccel dxva2")
                 Case "cuda"
                     sourcePath = p.LastOriginalSourceFile
-                    sb.Append(" -hwaccel_output_format cuda")
+                    sb.Append(" -hwaccel cuda -hwaccel_output_format cuda")
             End Select
 
             If sourcePath.Ext = "vpy" Then
@@ -306,7 +316,7 @@ Public Class ffmpegEnc
                     End If
 
                     If includePaths Then
-                        sb.Append(" -passlogfile " + (p.TempDir + p.TargetFile.Base + "_2pass").Escape)
+                        sb.Append(" -passlogfile " + (Path.Combine(p.TempDir, p.TargetFile.Base + "_2pass")).Escape)
                     End If
                 Case EncodingMode.OnePass
                     sb.Append($" -b:v {p.VideoBitrate}k")

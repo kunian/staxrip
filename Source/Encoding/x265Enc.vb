@@ -1,5 +1,6 @@
 ﻿
 Imports System.Text
+Imports System.Text.RegularExpressions
 Imports System.Threading.Tasks
 Imports StaxRip.UI
 
@@ -36,13 +37,35 @@ Public Class x265Enc
 
     Overrides ReadOnly Property IsOvercroppingAllowed As Boolean
         Get
-            Return String.IsNullOrWhiteSpace(Params.DolbyVisionRpu.Value)
+            If Not Params.DolbyVisionRpu.Visible Then Return True
+            Return String.IsNullOrWhiteSpace(Params.GetStringParam(Params.DolbyVisionRpu.Switch)?.Value)
         End Get
     End Property
 
-    Overrides ReadOnly Property ResizingStatus As String
+    Overrides ReadOnly Property IsUnequalResizingAllowed As Boolean
         Get
-            Return If(String.IsNullOrWhiteSpace(Params.DolbyVisionRpu.Value), "", "Resizing would interfere with the Dolby Vision metadata. Disable the 'Resize' filter or the Dolby Vision RPU file.")
+            If Not Params.DolbyVisionRpu.Visible Then Return True
+            Return String.IsNullOrWhiteSpace(Params.GetStringParam(Params.DolbyVisionRpu.Switch)?.Value)
+        End Get
+    End Property
+
+    Overrides ReadOnly Property DolbyVisionMetadataPath As String
+        Get
+            If Not Params.DolbyVisionRpu.Visible Then Return Nothing
+            Return Params.GetStringParam(Params.DolbyVisionRpu.Switch)?.Value
+        End Get
+    End Property
+
+    Overrides ReadOnly Property Hdr10PlusMetadataPath As String
+        Get
+            If Not Params.DhdrInfo.Visible Then Return Nothing
+            Return Params.GetStringParam(Params.DhdrInfo.Switch)?.Value
+        End Get
+    End Property
+
+    Overrides ReadOnly Property Codec As String
+        Get
+            Return "hevc"
         End Get
     End Property
 
@@ -88,7 +111,8 @@ Public Class x265Enc
     End Sub
 
     Overrides Function BeforeEncoding() As Boolean
-        If p.Script.IsFilterActive("Crop") AndAlso Not String.IsNullOrWhiteSpace(Params.DolbyVisionRpu.Value) AndAlso Params.DolbyVisionRpu.Value = p.HdrDolbyVisionMetadataFile?.Path AndAlso Params.DolbyVisionRpu.Value.FileExists() Then
+        Dim rpu = Params.GetStringParam("--dolby-vision-rpu")?.Value
+        If p.Script.IsFilterActive("Crop") AndAlso Not String.IsNullOrWhiteSpace(rpu) AndAlso rpu = p.HdrDolbyVisionMetadataFile?.Path AndAlso rpu.FileExists() Then
             If (p.CropLeft Or p.CropTop Or p.CropRight Or p.CropBottom) <> 0 Then
                 p.HdrDolbyVisionMetadataFile.WriteEditorConfigFile(New Padding(p.CropLeft, p.CropTop, p.CropRight, p.CropBottom), True)
                 Dim newPath = p.HdrDolbyVisionMetadataFile.WriteCroppedRpu(True)
@@ -102,6 +126,141 @@ Public Class x265Enc
         Return True
     End Function
 
+    Overrides Sub SetMetaData(sourceFile As String)
+        If Not p.ImportVUIMetadata Then Exit Sub
+
+        Dim cl = ""
+        Dim colour_primaries = MediaInfo.GetVideo(sourceFile, "colour_primaries")
+
+        Select Case colour_primaries
+            Case "BT.2020"
+                If colour_primaries.Contains("BT.2020") Then
+                    cl += " --colorprim bt2020"
+                End If
+            Case "BT.709"
+                If colour_primaries.Contains("BT.709") Then
+                    cl += " --colorprim bt709"
+                End If
+        End Select
+
+        Dim transfer_characteristics = MediaInfo.GetVideo(sourceFile, "transfer_characteristics")
+
+        Select Case transfer_characteristics
+            Case "PQ", "SMPTE ST 2084"
+                If transfer_characteristics.Contains("SMPTE ST 2084") Or transfer_characteristics.Contains("PQ") Then
+                    cl += " --transfer smpte2084"
+                End If
+            Case "BT.709"
+                If transfer_characteristics.Contains("BT.709") Then
+                    cl += " --transfer bt709"
+                End If
+            Case "HLG"
+                cl += " --transfer arib-std-b67"
+        End Select
+
+        Dim matrix_coefficients = MediaInfo.GetVideo(sourceFile, "matrix_coefficients")
+
+        Select Case matrix_coefficients
+            Case "BT.2020 non-constant"
+                If matrix_coefficients.Contains("BT.2020 non-constant") Then
+                    cl += " --colormatrix bt2020nc"
+                End If
+            Case "BT.709"
+                cl += " --colormatrix bt709"
+        End Select
+
+        Dim color_range = MediaInfo.GetVideo(sourceFile, "colour_range")
+
+        Select Case color_range
+            Case "Limited"
+                cl += " --range limited"
+            Case "Full"
+                cl += " --range full"
+        End Select
+
+        Dim ChromaSubsampling_Position = MediaInfo.GetVideo(sourceFile, "ChromaSubsampling_Position")
+        Dim chromaloc = New String(ChromaSubsampling_Position.Where(Function(c) c.IsDigit()).ToArray())
+
+        If Not String.IsNullOrEmpty(chromaloc) AndAlso chromaloc <> "0" Then
+            cl += $" --chromaloc {chromaloc}"
+        End If
+
+        Dim MasteringDisplay_ColorPrimaries = MediaInfo.GetVideo(sourceFile, "MasteringDisplay_ColorPrimaries")
+        Dim MasteringDisplay_Luminance = MediaInfo.GetVideo(sourceFile, "MasteringDisplay_Luminance")
+
+        If MasteringDisplay_ColorPrimaries <> "" AndAlso MasteringDisplay_Luminance <> "" Then
+            Dim luminanceMatch = Regex.Match(MasteringDisplay_Luminance, "min: ([\d\.]+) cd/m2, max: ([\d\.]+) cd/m2")
+
+            If luminanceMatch.Success Then
+                Dim luminanceMin = luminanceMatch.Groups(1).Value.ToDouble * 10000
+                Dim luminanceMax = luminanceMatch.Groups(2).Value.ToDouble * 10000
+
+                If MasteringDisplay_ColorPrimaries.Contains("Display P3") Then
+                    cl += " --output-depth 10"
+                    cl += $" --master-display ""G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L({luminanceMax},{luminanceMin})"""
+                    cl += " --hdr10"
+                    cl += " --repeat-headers"
+                    cl += " --range limited"
+                    cl += " --hrd"
+                    cl += " --aud"
+                End If
+
+                If MasteringDisplay_ColorPrimaries.Contains("DCI P3") Then
+                    cl += " --output-depth 10"
+                    cl += $" --master-display ""G(13250,34500)B(7500,3000)R(34000,16000)WP(15700,17550)L({luminanceMax},{luminanceMin})"""
+                    cl += " --hdr10"
+                    cl += " --repeat-headers"
+                    cl += " --range limited"
+                    cl += " --hrd"
+                    cl += " --aud"
+                End If
+
+                If MasteringDisplay_ColorPrimaries.Contains("BT.2020") Then
+                    cl += " --output-depth 10"
+                    cl += $" --master-display ""G(8500,39850)B(6550,2300)R(35400,14600)WP(15635,16450)L({luminanceMax},{luminanceMin})"""
+                    cl += " --hdr10"
+                    cl += " --repeat-headers"
+                    cl += " --range limited"
+                    cl += " --hrd"
+                    cl += " --aud"
+                End If
+
+                If Params.Level.Value > 0 AndAlso Params.HighTier.Value > 0 Then
+                    Dim m = GetH265MaxBitrate(Params.Level.ValueText.ToSingle(), Params.HighTier.Value = 1)
+                    cl += $" {Params.VbvMaxRate.Switch} {m}"
+                    cl += $" {Params.VbvBufSize.Switch} {m}"
+                End If
+
+                If Not String.IsNullOrWhiteSpace(p.Hdr10PlusMetadataFile) AndAlso p.Hdr10PlusMetadataFile.FileExists() Then
+                    cl += $" --dhdr10-info ""{p.Hdr10PlusMetadataFile}"""
+                End If
+            End If
+        End If
+
+        If Not String.IsNullOrWhiteSpace(p.HdrDolbyVisionMetadataFile?.Path) Then
+            cl += " --output-depth 10"
+            cl += $" --dolby-vision-rpu ""{p.HdrDolbyVisionMetadataFile.Path}"""
+
+            Select Case p.HdrDolbyVisionMode
+                Case DoviMode.Untouched, DoviMode.Mode0, DoviMode.Mode1
+                    cl += $""
+                Case DoviMode.Mode4
+                    cl += $" --dolby-vision-profile 8.4"
+                Case Else
+                    cl += $" --dolby-vision-profile 8.1"
+            End Select
+        End If
+
+        Dim MaxCLL = MediaInfo.GetVideo(sourceFile, "MaxCLL").Trim.Left(" ").ToInt
+        Dim MaxFALL = MediaInfo.GetVideo(sourceFile, "MaxFALL").Trim.Left(" ").ToInt
+
+        If MaxCLL <> 0 OrElse MaxFALL <> 0 Then
+            cl += $" --max-cll ""{MaxCLL},{MaxFALL}"""
+        End If
+
+        ImportCommandLine(cl)
+    End Sub
+
     Overrides Property Bitrate As Integer
         Get
             Return CInt(Params.Bitrate.Value)
@@ -112,7 +271,8 @@ Public Class x265Enc
     End Property
 
     Overrides Function CanChunkEncode() As Boolean
-        Return CInt(Params.Chunks.Value) > 1
+        Dim rpu = Params.GetStringParam(Params.DolbyVisionRpu.Switch)?.Value
+        Return CInt(Params.Chunks.Value) > 1 AndAlso String.IsNullOrWhiteSpace(rpu)
     End Function
 
     Overrides Function GetChunks() As Integer
@@ -129,34 +289,30 @@ Public Class x265Enc
         Dim ret As New List(Of Action)
 
         For chunk = 0 To chunkCount - 1
-            Dim name = ""
             Dim chunkStart = startFrame + (chunk * chunkLength)
             Dim chunkEnd = If(chunk <> chunkCount - 1, chunkStart + (chunkLength - 1), endFrame)
+            Dim chunkName = ""
+            Dim passName = ""
 
-            If chunk > 0 Then
-                name = "_chunk" & (chunk + 1)
+            If chunkCount > 1 Then
+                chunkName = "_chunk" & (chunk + 1)
+                passName = " chunk " & (chunk + 1)
             End If
 
             If Params.Mode.Value = x265RateMode.TwoPass Then
                 ret.Add(Sub()
-                            Encode("Video encoding pass 1" + name.Replace("_chunk", " chunk "),
-                                   GetArgs(1, chunkStart, chunkEnd, name, p.Script), s.ProcessPriority)
-                            Encode("Video encoding pass 2" + name.Replace("_chunk", " chunk "),
-                                   GetArgs(2, chunkStart, chunkEnd, name, p.Script), s.ProcessPriority)
+                            Encode("Video encoding pass 1" + passName, GetArgs(1, chunkStart, chunkEnd, chunkName, p.Script), s.ProcessPriority)
+                            Encode("Video encoding pass 2" + passName, GetArgs(2, chunkStart, chunkEnd, chunkName, p.Script), s.ProcessPriority)
                         End Sub)
             ElseIf Params.Mode.Value = x265RateMode.ThreePass Then
                 ret.Add(Sub()
                             'Specific order 1 > 3 > 2 is correct!
-                            Encode("Video encoding first pass" + name.Replace("_chunk", " chunk "),
-                                   GetArgs(1, chunkStart, chunkEnd, name, p.Script), s.ProcessPriority)
-                            Encode("Video encoding Nth pass" + name.Replace("_chunk", " chunk "),
-                                   GetArgs(3, chunkStart, chunkEnd, name, p.Script), s.ProcessPriority)
-                            Encode("Video encoding last pass" + name.Replace("_chunk", " chunk "),
-                                   GetArgs(2, chunkStart, chunkEnd, name, p.Script), s.ProcessPriority)
+                            Encode("Video encoding first pass" + passName, GetArgs(1, chunkStart, chunkEnd, chunkName, p.Script), s.ProcessPriority)
+                            Encode("Video encoding Nth pass" + passName, GetArgs(3, chunkStart, chunkEnd, chunkName, p.Script), s.ProcessPriority)
+                            Encode("Video encoding last pass" + passName, GetArgs(2, chunkStart, chunkEnd, chunkName, p.Script), s.ProcessPriority)
                         End Sub)
             Else
-                ret.Add(Sub() Encode("Video encoding" + name.Replace("_chunk", " chunk "),
-                    GetArgs(1, chunkStart, chunkEnd, name, p.Script), s.ProcessPriority))
+                ret.Add(Sub() Encode("Video encoding" + passName, GetArgs(1, chunkStart, chunkEnd, chunkName, p.Script), s.ProcessPriority))
             End If
         Next
 
@@ -196,12 +352,12 @@ Public Class x265Enc
         End If
 
         script.Filters.Add(New VideoFilter("aaa", "aaa", code))
-        script.Path = p.TempDir + p.TargetFile.Base + "_CompCheck." + script.FileType
+        script.Path = Path.Combine(p.TempDir, p.TargetFile.Base + "_CompCheck." + script.FileType)
         script.Synchronize()
 
         Log.WriteLine(BR + script.GetFullScript + BR)
 
-        Dim commandLine = enc.Params.GetArgs(0, 0, 0, Nothing, script, p.TempDir + p.TargetFile.Base + "_CompCheck." + OutputExt, True, True)
+        Dim commandLine = enc.Params.GetArgs(0, 0, 0, Nothing, script, Path.Combine(p.TempDir, p.TargetFile.Base + "_CompCheck." + OutputExt), True, True)
 
         Try
             Encode("Compressibility Check", commandLine, ProcessPriorityClass.Normal)
@@ -212,7 +368,7 @@ Public Class x265Enc
             Exit Sub
         End Try
 
-        Dim bits = (New FileInfo(p.TempDir + p.TargetFile.Base + "_CompCheck." + OutputExt).Length) * 8
+        Dim bits = (New FileInfo(Path.Combine(p.TempDir, p.TargetFile.Base + "_CompCheck." + OutputExt)).Length) * 8
         p.Compressibility = (bits / script.GetFrameCount) / (p.TargetWidth * p.TargetHeight)
 
         OnAfterCompCheck()
@@ -333,9 +489,21 @@ Public Class x265Params
         .Name = "Quant",
         .Text = "Quality",
         .DefaultValue = 28,
-        .Value = 18,
+        .Value = 20,
         .VisibleFunc = Function() Mode.Value = 1 OrElse Mode.Value = 2,
         .Config = {0, 51, 0.5, 1}}
+
+    Property CRFmax As New NumParam With {
+        .Switch = "--crf-max",
+        .Text = "Maximum CRF",
+        .Init = 51,
+        .Config = Quant.Config}
+
+    Property CRFmin As New NumParam With {
+        .Switch = "--crf-min",
+        .Text = "Minimum CRF",
+        .Init = 0,
+        .Config = Quant.Config}
 
     Property Bitrate As New NumParam With {
         .HelpSwitch = "--bitrate",
@@ -361,6 +529,19 @@ Public Class x265Params
         .Switches = {"-t"},
         .Text = "Tune",
         .Options = {"None", "PSNR", "SSIM", "Grain", "Fast Decode", "Zero Latency", "Animation"}}
+
+    Property Level As New OptionParam With {
+        .Switch = "--level-idc",
+        .Switches = {"--level"},
+        .Text = "Level",
+        .Options = {"Automatic", "1", "2", "2.1", "3", "3.1", "4", "4.1", "5", "5.1", "5.2", "6", "6.1", "6.2", "8.5"}}
+
+    Property HighTier As New OptionParam With {
+        .Switch = "--high-tier",
+        .NoSwitch = "--no-high-tier",
+        .Text = "High Tier",
+        .Options = {"Undefined", "Yes", "No"},
+        .Values = {"", "--high-tier", "--no-high-tier"}}
 
     Property PipingToolAVS As New OptionParam With {
         .Text = "Pipe",
@@ -497,7 +678,7 @@ Public Class x265Params
     Property Chunks As New NumParam With {
         .Text = "Chunks",
         .Init = 1,
-        .Config = {1, 16}}
+        .Config = {1, 128}}
 
     Property Weightp As New BoolParam With {
         .Switch = "--weightp",
@@ -510,24 +691,40 @@ Public Class x265Params
         .NoSwitch = "--no-weightb",
         .Text = "Enable weighted prediction in B slices"}
 
-    Property AQmode As New OptionParam With {
+    ReadOnly Property AQmode As OptionParam
+        Get
+            Select Case Package.x265Type
+                Case x265Type.Patman
+                    Return AQmodeExtended
+                Case Else
+                    Return AQmodeNormal
+            End Select
+        End Get
+    End Property
+
+    Property AQmodeNormal As New OptionParam With {
         .Switch = "--aq-mode",
         .Text = "AQ Mode",
+        .Expanded = True,
         .IntegerValue = True,
         .DefaultValue = 2,
-        .AlwaysOn = True,
+        .AlwaysOn = False,
         .Options = {"0: Disabled", "1: AQ enabled", "2: AQ enabled with auto-variance", "3: AQ enabled with auto-variance with bias to dark scenes", "4: AQ enabled with auto-variance and edge information"},
-        .ValueChangedAction = Sub(x) AQmodeExtended.Value = x,
-        .VisibleFunc = Function() Package.x265Type = x265Type.Vanilla}
+        .ValueChangedAction = Sub(x) AQmodeExtended.Value = x}
 
     Property AQmodeExtended As New OptionParam With {
         .Switch = "--aq-mode",
         .Text = "AQ Mode",
+        .Expanded = True,
         .IntegerValue = True,
         .DefaultValue = 2,
-        .AlwaysOn = True,
-        .Options = {"0: Disabled", "1: AQ enabled", "2: AQ enabled with auto-variance", "3: AQ enabled with auto-variance with bias to dark scenes", "4: AQ enabled with auto-variance and edge information", "5: AQ enabled with auto-variance, edge information and bias to dark scenes."},
-        .VisibleFunc = Function() Package.x265Type = x265Type.Patman OrElse Package.x265Type = x265Type.DJATOM OrElse Package.x265Type = x265Type.JPSDR}
+        .AlwaysOn = False,
+        .Options = {"0: Disabled", "1: Uniform AQ", "2: AQ enabled with auto-variance", "3: AQ enabled with auto-variance with bias to dark scenes", "4: AQ enabled with auto-variance and edge information", "5: AQ enabled with auto-variance, edge information and bias to dark scenes", "Auto: Automatic decision for each frame using its scene statistics"},
+        .ArgsFunc = Function()
+                        Return If(AQmodeExtended.AlwaysOn OrElse AQmodeExtended.Value <> AQmodeExtended.DefaultValue,
+                            If(AQmodeExtended.Value < 6, $"--aq-mode {AQmodeExtended.Value}", "--auto-aq"),
+                            "")
+                    End Function}
 
     Property AQStrength As New NumParam With {
         .Switch = "--aq-strength",
@@ -539,7 +736,7 @@ Public Class x265Params
         .Text = "AQ Bias Strength",
         .Init = 1,
         .Config = {0, 3, 0.05, 2},
-        .VisibleFunc = Function() AQmodeExtended.Visible AndAlso (AQmodeExtended.Value = 3 OrElse AQmodeExtended.Value = 5)}
+        .VisibleFunc = Function() AQmode Is AQmodeExtended AndAlso (AQmode.Value = 3 OrElse AQmode.Value = 5)}
 
     Property CUtree As New BoolParam With {
         .Switch = "--cutree",
@@ -646,10 +843,12 @@ Public Class x265Params
 
     Property TSkip As New BoolParam With {
         .Switch = "--tskip",
+        .NoSwitch = "--no-tskip",
         .Text = "Enable evaluation of transform skip coding for 4x4 TU coded blocks"}
 
     Property TSkipFast As New BoolParam With {
         .Switch = "--tskip-fast",
+        .NoSwitch = "--no-tskip-fast",
         .Text = "Only evaluate transform skip for NxN intra predictions (4x4 blocks)"}
 
     Property PsyRD As New NumParam With {
@@ -667,17 +866,6 @@ Public Class x265Params
         .Text = "QP Adaptation Range",
         .Init = 1.0,
         .Config = {1, 6, 0.05, 2}}
-
-    Property CRFmax As New NumParam With {
-        .Switch = "--crf-max",
-        .Text = "Maximum CRF",
-        .Config = {0, 51, 1, 1},
-        .Init = 51}
-
-    Property CRFmin As New NumParam With {
-        .Switch = "--crf-min",
-        .Text = "Minimum CRF",
-        .Config = {0, 51, 1, 1}}
 
     Property PBRatio As New NumParam With {
         .Switch = "--pbratio",
@@ -731,6 +919,7 @@ Public Class x265Params
     Property Hash As New OptionParam With {
         .Switch = "--hash",
         .Text = "Hash",
+        .Expanded = True,
         .IntegerValue = True,
         .Options = {"None", "MD5", "CRC", "Checksum"}}
 
@@ -812,7 +1001,7 @@ Public Class x265Params
     Property DolbyVisionProfile As New OptionParam With {
         .Switch = "--dolby-vision-profile",
         .Text = "Dolby Vision Profile",
-        .Options = {"0", "5", "8.1", "8.2", "8.4"}}
+        .Options = {"Undefined", "5", "8.1", "8.2", "8.4"}}
 
     Property DolbyVisionRpu As New StringParam With {
         .Switch = "--dolby-vision-rpu",
@@ -923,6 +1112,7 @@ Public Class x265Params
 
     Property Deblock As New BoolParam With {
         .Switch = "--deblock",
+        .NoSwitch = "--no-deblock",
         .Text = "Deblocking",
         .ArgsFunc = Function() As String
                         If Deblock.Value Then
@@ -940,9 +1130,16 @@ Public Class x265Params
                         End If
                     End Function,
         .ImportAction = Sub(param, arg)
-                            Dim a = arg.Split(":"c)
-                            DeblockA.Value = a(0).ToInt
-                            DeblockB.Value = a(1).ToInt
+                            If param.Equals(Deblock.NoSwitch, StringComparison.OrdinalIgnoreCase) Then
+                                Deblock.Value = False
+                            Else
+                                Deblock.Value = True
+                                Dim a = arg.Split(":"c)
+                                If a.Length = 2 Then
+                                    DeblockA.Value = a(0).ToInt
+                                    DeblockB.Value = a(1).ToInt
+                                End If
+                            End If
                         End Sub}
 
     Property DeblockA As New NumParam With {
@@ -1015,6 +1212,22 @@ Public Class x265Params
         .Weight = 9,
         .VisibleFunc = Function() Package.x265Type = x265Type.DJATOM}
 
+    Property ScreenContentCoding As New OptionParam With {
+        .Switch = "--scc",
+        .Text = "Screen Content Coding",
+        .Expanded = True,
+        .IntegerValue = True,
+        .Options = {"0 - Disabled", "1 - Intrablockcopy fast search with 1x2 CTUs search range", "2 - Intrablockcopy full search"},
+        .Init = 0}
+
+    Property Format As New OptionParam With {
+        .Switch = "--format",
+        .Text = "Format",
+        .IntegerValue = True,
+        .Options = {"Normal", "Side-by-Side", "Over-Under"},
+        .Init = 0}
+
+
     Overrides ReadOnly Property Items As List(Of CommandLineParam)
         Get
             If ItemsValue Is Nothing Then
@@ -1024,9 +1237,7 @@ Public Class x265Params
                     New OptionParam With {.Switch = "--profile", .Switches = {"-P"}, .Text = "Profile", .Name = "ProfileMain8", .VisibleFunc = Function() OutputDepth.Value = 0, .Options = {"Automatic", "Main", "Main - Intra", "Main Still Picture", "Main 444 - 8", "Main 444 - Intra", "Main 444 - Still Picture"}},
                     New OptionParam With {.Switch = "--profile", .Switches = {"-P"}, .Text = "Profile", .Name = "ProfileMain10", .VisibleFunc = Function() OutputDepth.Value = 1, .Options = {"Automatic", "Main 10", "Main 10 - Intra", "Main 422 - 10", "Main 422 - 10 - Intra", "Main 444 - 10", "Main 444 - 10 - Intra"}},
                     New OptionParam With {.Switch = "--profile", .Switches = {"-P"}, .Text = "Profile", .Name = "ProfileMain12", .VisibleFunc = Function() OutputDepth.Value = 2, .Options = {"Automatic", "Main 12", "Main 12 - Intra", "Main 422 - 12", "Main 422 - 12 - Intra", "Main 444 - 12", "Main 444 - 12 - Intra"}},
-                    New OptionParam With {.Switch = "--level-idc", .Switches = {"--level"}, .Text = "Level", .Options = {"Automatic", "1", "2", "2.1", "3", "3.1", "4", "4.1", "5", "5.1", "5.2", "6", "6.1", "6.2", "8.5"}},
-                    New OptionParam With {.Switch = "--high-tier", .NoSwitch = "--no-high-tier", .Text = "High Tier", .Options = {"Undefined", "Yes", "No"}, .Values = {"", "--high-tier", "--no-high-tier"}},
-                    Quant, Bitrate)
+                    Level, HighTier, Quant, Bitrate)
                 Add("Analysis", RD, PsyRD,
                     New NumParam With {.Switch = "--dynamic-rd", .Text = "Dynamic RD", .Config = {0, 4}},
                     RdRefine,
@@ -1054,12 +1265,13 @@ Public Class x265Params
                 Add("Rate Control",
                     New StringParam With {.Switch = "--zones", .Text = "Zones"},
                     New StringParam With {.Switch = "--zonefile", .Text = "Zone File", .BrowseFile = True},
-                    AQmode, AQmodeExtended, qgSize, AQStrength, AQBiasStrength, QComp, qpmin, qpmax, qpstep,
+                    AQmode, qgSize,
+                    AQStrength, AQBiasStrength, QComp, qpmin, qpmax, qpstep,
                     New NumParam With {.Switch = "--qp-delta-ref", .Text = "QP Delta Ref", .Init = 5, .Config = {0, 10, 0.5, 1}},
                     New NumParam With {.Switch = "--qp-delta-nonref", .Text = "QP Delta NonRef", .Init = 5, .Config = {0, 10, 0.5, 1}},
                     New NumParam With {.Switch = "--cbqpoffs", .Text = "CB QP Offset", .Config = {-12, 12}},
                     New NumParam With {.Switch = "--crqpoffs", .Text = "CR QP Offset", .Config = {-12, 12}},
-                    NRintra, NRinter, CRFmin, CRFmax)
+                    NRintra, NRinter)
                 Add("Rate Control 2",
                     VbvBufSize, VbvMaxRate,
                     New NumParam With {.Switch = "--vbv-init", .Text = "VBV Init", .Config = {0.5, 1.0, 0.1, 1}, .Init = 0.9},
@@ -1070,7 +1282,8 @@ Public Class x265Params
                     IPRatio, PBRatio,
                     New NumParam With {.Switch = "--cplxblur", .Text = "Blur Complexity", .Config = {0, 0, 0.05, 2}, .Init = 20},
                     New NumParam With {.Switch = "--qblur", .Text = "Q Blur", .Config = {0, 0, 0.05, 2}, .Init = 0.5},
-                    New NumParam With {.Switch = "--scenecut-window", .Text = "Scenecut Window", .Init = 500, .Config = {0, 1000}})
+                    New NumParam With {.Switch = "--scenecut-window", .Text = "Scenecut Window", .Init = 500, .Config = {0, 1000}},
+                    CRFmin, CRFmax)
                 Add("Rate Control 3",
                     CUtree,
                     New BoolParam With {.Switch = "--lossless", .Text = "Lossless"},
@@ -1152,14 +1365,17 @@ Public Class x265Params
                     New BoolParam With {.Switch = "--idr-recovery-sei", .Init = False, .Text = "Recovery SEI"},
                     New BoolParam With {.Switch = "--single-sei", .Init = False, .Text = "Single SEI"})
                 Add("Bitstream 2",
+                    ScreenContentCoding,
                     Hash,
                     New BoolParam With {.Switch = "--temporal-layers", .Text = "Temporal Layers"},
                     New BoolParam With {.Switch = "--opt-qp-pps", .Init = False, .Text = "Optimize QP in PPS"},
                     New BoolParam With {.Switch = "--opt-ref-list-length-pps", .Init = False, .Text = "Optimize L0 and L1 Ref List Length in PPS"},
                     New BoolParam With {.Switch = "--multi-pass-opt-rps", .Init = False, .Text = "Enable Storing", .Help = "Enable Storing commonly used RPS in SPS in multi pass mode"},
-                    New BoolParam With {.Switch = "--opt-cu-delta-qp", .Text = "Optimize CU level QPs", .Help = "Optimize CU level QPs pulling up lower QPs close to meanQP", .Init = False})
+                    New BoolParam With {.Switch = "--opt-cu-delta-qp", .Text = "Optimize CU level QPs", .Help = "Optimize CU level QPs pulling up lower QPs close to meanQP", .Init = False},
+                    New BoolParam With {.Switch = "--alpha", .Text = "Alpha channel support", .Help = "Enable alpha channel support", .Init = False, .IntegerValue = True})
                 Add("Input/Output",
                     Decoder, PipingToolAVS, PipingToolVS,
+                    Format,
                     New OptionParam With {.Switch = "--input-depth", .Text = "Input Depth", .Options = {"Automatic", "8", "10", "12", "14", "16"}},
                     New OptionParam With {.Switch = "--input-csp", .Text = "Input CSP", .Options = {"Automatic", "I400", "I420", "I422", "I444", "NV12", "NV16"}},
                     New OptionParam With {.Switch = "--fps", .Text = "Frame Rate", .Options = {"Automatic", "24000/1001", "24", "25", "30000/1001", "30", "50", "60000/1001", "60"}},
@@ -1368,7 +1584,7 @@ Public Class x265Params
                             sb.Append(pipeString + Package.x265.Path.Escape)
                             Dim type = Package.x265Type
 
-                            If FrameServerHelp.IsPortable AndAlso (type = x265Type.Patman OrElse type = x265Type.DJATOM OrElse type = x265Type.JPSDR) Then
+                            If FrameServerHelp.IsPortable AndAlso type <> x265Type.Vanilla Then
                                 sb.Append(" --reader-options library=" + FrameServerHelp.GetSynthPath.Escape)
                             End If
 
@@ -1489,15 +1705,13 @@ Public Class x265Params
                 sb.Append(" --stats " + (targetPath.DirAndBase + chunkName + ".stats").Escape)
             End If
 
-            Dim input = If(Decoder.Value = 0 AndAlso pipeTool = "automatic", script.Path.Escape, "-")
-
-            If (Mode.Value = x265RateMode.ThreePass AndAlso pass <> 2) OrElse
-                (Mode.Value = x265RateMode.TwoPass AndAlso pass = 1) Then
-
-                sb.Append(" --output NUL " + input)
+            If (Mode.Value = x265RateMode.ThreePass AndAlso pass <> 2) OrElse (Mode.Value = x265RateMode.TwoPass AndAlso pass = 1) Then
+                sb.Append(" --output NUL")
             Else
-                sb.Append(" --output " + (targetPath.DirAndBase + chunkName + targetPath.ExtFull).Escape + " " + input)
+                sb.Append(" --output " + (targetPath.DirAndBase + chunkName + targetPath.ExtFull).Escape)
             End If
+
+            sb.Append(" --input " + If(Decoder.Value = 0 AndAlso pipeTool = "automatic", script.Path.Escape, "-"))
         Else
             If Seek.Value > 0 AndAlso Not IsCustom(pass, "--seek") Then
                 sb.Append(" --seek " & Seek.Value)

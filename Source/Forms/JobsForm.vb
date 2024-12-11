@@ -217,7 +217,7 @@ Friend Class JobsForm
         AddHandler lv.ItemRemoved, Sub(item)
                                        Dim fp = DirectCast(item.Tag, Job).Path
 
-                                       If fp.StartsWith(Folder.Settings + "Batch Projects\") Then
+                                       If fp.StartsWith(Path.Combine(Folder.Settings, "Batch Projects") + Path.DirectorySeparatorChar) Then
                                            FileHelp.Delete(fp)
                                        End If
                                    End Sub
@@ -249,6 +249,12 @@ Friend Class JobsForm
 
         ApplyTheme()
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+    End Sub
+
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
     End Sub
 
     Sub OnThemeChanged(theme As Theme)
@@ -396,7 +402,9 @@ Friend Class JobsForm
     End Sub
 
     Sub bnLoad_Click(sender As Object, e As EventArgs) Handles bnLoad.Click
-        If g.MainForm.LoadProject(lv.SelectedItem.ToString) Then
+        Dim job = DirectCast(lv.SelectedItem, Job)
+
+        If g.MainForm.LoadProject(job.Path) Then
             Close()
         End If
     End Sub
@@ -407,7 +415,6 @@ Friend Class JobsForm
         RemoveHandler FileWatcher.Created, AddressOf Reload
         FileWatcher.Dispose()
         RemoveHandler lv.ItemsChanged, AddressOf HandleItemsChanged
-        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
     End Sub
 
     Protected Overrides Sub OnLoad(args As EventArgs)

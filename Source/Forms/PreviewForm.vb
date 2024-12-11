@@ -10,12 +10,6 @@ Public Class PreviewForm
     Inherits DialogBase
 
 #Region " Designer "
-    Protected Overloads Overrides Sub Dispose(disposing As Boolean)
-        If disposing Then components?.Dispose()
-
-        MyBase.Dispose(disposing)
-    End Sub
-
     Private components As System.ComponentModel.IContainer
 
     Friend WithEvents pnVideo As System.Windows.Forms.Panel
@@ -290,6 +284,16 @@ Public Class PreviewForm
         bnMenu.ForeColor = SystemColors.ControlText
     End Sub
 
+    Protected Overloads Overrides Sub Dispose(disposing As Boolean)
+        Instances?.Remove(Me)
+        GenericMenu?.RemoveKeyDownHandler(Me)
+        Renderer?.Dispose()
+        FrameServer?.Dispose()
+        components?.Dispose()
+
+        MyBase.Dispose(disposing)
+    End Sub
+
     Protected Overrides Sub OnLoad(args As EventArgs)
         MyBase.OnLoad(args)
         Open(True)
@@ -346,8 +350,10 @@ Public Class PreviewForm
         Renderer.Dispose()
         FrameServer.Dispose()
 
-        If PreviewScript.GetError <> "" Then
-            MsgError("Script Error", PreviewScript.GetError)
+        Dim err = PreviewScript.GetError
+
+        If err <> "" Then
+            MsgError("Script Error", err)
             Exit Sub
         End If
 
@@ -786,7 +792,7 @@ Public Class PreviewForm
     <Command("Plays the script with a player.")>
     Sub ShowExternalPlayer()
         Dim script = PreviewScript.GetNewScript()
-        script.Path = p.TempDir + p.TargetFile.Base + "_play." + script.FileType
+        script.Path = Path.Combine(p.TempDir, p.TargetFile.Base + "_play." + script.FileType)
         g.UpdateTrim(script)
         g.PlayScript(script)
     End Sub
@@ -794,7 +800,7 @@ Public Class PreviewForm
     <Command("Plays the script with mpv.net.")>
     Sub PlayWithMpvnet()
         Dim script = PreviewScript.GetNewScript()
-        script.Path = p.TempDir + p.TargetFile.Base + "_play." + script.FileType
+        script.Path = Path.Combine(p.TempDir, p.TargetFile.Base + "_play." + script.FileType)
         g.UpdateTrim(script)
         g.PlayScriptWithMPV(script, "--start=" + GetPlayPosition.ToString)
     End Sub
@@ -802,7 +808,7 @@ Public Class PreviewForm
     <Command("Plays the script with MPC.")>
     Sub PlayWithMPC()
         Dim script = PreviewScript.GetNewScript()
-        script.Path = p.TempDir + p.TargetFile.Base + "_play." + script.FileType
+        script.Path = Path.Combine(p.TempDir, p.TargetFile.Base + "_play." + script.FileType)
         g.UpdateTrim(script)
         g.PlayScriptWithMPC(script, "/start " & GetPlayPosition.TotalMilliseconds)
     End Sub
@@ -822,7 +828,6 @@ Public Class PreviewForm
         Next
 
         list.Add(Renderer.Position - 1)
-
         list.Sort()
 
         Dim index = list.IndexOf(Renderer.Position - 1) - 1
@@ -858,9 +863,20 @@ Public Class PreviewForm
 
     <Command("Saves the current frame as bitmap.")>
     Sub SaveBitmap()
+        Dim filename = ""
+
+        Select Case s.SaveImagePreviewFrameNumberPosition
+            Case ImageFrameNumberPosition.Prefix
+                filename = $"{Renderer.Position:00000}_{p.TargetFile.Base}"
+            Case ImageFrameNumberPosition.Suffix
+                filename = $"{p.TargetFile.Base}_{Renderer.Position:00000}"
+            Case Else
+                Throw New NotSupportedException("PreviewForm.SaveBitmap()")
+        End Select
+
         Using dialog As New SaveFileDialog
             dialog.SetFilter({"bmp"})
-            dialog.FileName = p.TargetFile.Base + " - " & Renderer.Position
+            dialog.FileName = filename
 
             If dialog.ShowDialog = DialogResult.OK Then
                 BitmapUtil.CreateBitmap(FrameServer, Renderer.Position).Save(dialog.FileName, ImageFormat.Bmp)
@@ -870,12 +886,46 @@ Public Class PreviewForm
 
     <Command("Saves the current frame as bitmap.")>
     Sub SavePng()
+        Dim filename = ""
+
+        Select Case s.SaveImagePreviewFrameNumberPosition
+            Case ImageFrameNumberPosition.Prefix
+                filename = $"{Renderer.Position:00000}_{p.TargetFile.Base}"
+            Case ImageFrameNumberPosition.Suffix
+                filename = $"{p.TargetFile.Base}_{Renderer.Position:00000}"
+            Case Else
+                Throw New NotSupportedException("PreviewForm.SavePNG()")
+        End Select
+
         Using dialog As New SaveFileDialog
             dialog.SetFilter({"png"})
-            dialog.FileName = p.TargetFile.Base + " - " & Renderer.Position
+            dialog.FileName = filename
 
             If dialog.ShowDialog = DialogResult.OK Then
                 BitmapUtil.CreateBitmap(FrameServer, Renderer.Position).Save(dialog.FileName, ImageFormat.Png)
+            End If
+        End Using
+    End Sub
+
+    <Command("Saves the current frame as JPG.")>
+    Sub SaveJPG()
+        Dim filename = ""
+
+        Select Case s.SaveImagePreviewFrameNumberPosition
+            Case ImageFrameNumberPosition.Prefix
+                filename = $"{Renderer.Position:00000}_{p.TargetFile.Base}"
+            Case ImageFrameNumberPosition.Suffix
+                filename = $"{p.TargetFile.Base}_{Renderer.Position:00000}"
+            Case Else
+                Throw New NotSupportedException("PreviewForm.SaveJPG()")
+        End Select
+
+        Using dialog As New SaveFileDialog
+            dialog.DefaultExt = "jpg"
+            dialog.FileName = filename
+
+            If dialog.ShowDialog = DialogResult.OK Then
+                SaveJpgByPath(dialog.FileName)
             End If
         End Using
     End Sub
@@ -899,21 +949,9 @@ Public Class PreviewForm
         End If
     End Sub
 
-    <Command("Saves the current frame as JPG.")>
-    Sub SaveJPG()
-        Using dialog As New SaveFileDialog
-            dialog.DefaultExt = "jpg"
-            dialog.FileName = p.TargetFile.Base + " - " & Renderer.Position
-
-            If dialog.ShowDialog = DialogResult.OK Then
-                SaveJpgByPath(dialog.FileName)
-            End If
-        End Using
-    End Sub
-
     <Command("Shows a dialog to navigate to a chapter.")>
     Sub GoToChapter()
-        Dim fp = p.TempDir + p.SourceFile.Base + "_chapters.txt"
+        Dim fp = Path.Combine(p.TempDir, p.SourceFile.Base + "_chapters.txt")
 
         If Not File.Exists(fp) Then
             MsgError("No chapter file found.")
@@ -1143,7 +1181,6 @@ Public Class PreviewForm
     End Sub
 
     Protected Overrides Sub OnFormClosing(args As FormClosingEventArgs)
-        MyBase.OnFormClosing(args)
         Instances.Remove(Me)
         GenericMenu.RemoveKeyDownHandler(Me)
         g.UpdateTrim(p.Script)
@@ -1151,8 +1188,9 @@ Public Class PreviewForm
         s.HidePreviewButtons = HidePreviewButtons
         s.LastPosition = Renderer.Position
         g.MainForm.UpdateFilters()
-        Renderer.Dispose()
-        FrameServer.Dispose()
+        Renderer?.Dispose()
+        FrameServer?.Dispose()
+        MyBase.OnFormClosing(args)
     End Sub
 
     Protected Overrides Sub WndProc(ByRef m As Message)
@@ -1257,8 +1295,11 @@ Public Class PreviewForm
 
     Sub pnVideo_Paint(sender As Object, e As PaintEventArgs) Handles pnVideo.Paint
         If Not BlockVideoPaint Then
-            RefreshControls()
-            Renderer.Draw()
+            Try
+                RefreshControls()
+                Renderer?.Draw()
+            Catch ex As Exception
+            End Try
         End If
     End Sub
 End Class

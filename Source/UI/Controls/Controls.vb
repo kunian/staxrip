@@ -6,6 +6,7 @@ Imports System.Threading
 Imports System.Threading.Tasks
 Imports System.Drawing.Drawing2D
 Imports System.Text.RegularExpressions
+Imports System.Reflection
 
 Namespace UI
     Public Class TreeViewEx
@@ -127,9 +128,15 @@ Namespace UI
         Sub New()
             MyBase.New()
             DrawMode = TreeViewDrawMode.OwnerDrawAll
+
             ApplyTheme()
 
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
         End Sub
 
         Sub OnThemeChanged(theme As Theme)
@@ -455,6 +462,11 @@ Namespace UI
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
         End Sub
 
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
+        End Sub
+
         Sub OnThemeChanged(theme As Theme)
             ApplyTheme(theme)
         End Sub
@@ -479,6 +491,7 @@ Namespace UI
 
         Sub New()
             Margin = New Padding(4, 2, 5, 2)
+            Padding = New Padding(5, 2, 5, 2)
             Anchor = AnchorStyles.Left Or AnchorStyles.Bottom Or AnchorStyles.Right
             SetStyle(ControlStyles.SupportsTransparentBackColor, True)
         End Sub
@@ -493,10 +506,10 @@ Namespace UI
 
             If Text <> "" Then
                 Dim textSize = e.Graphics.MeasureString(Text, Font)
-                textOffset = CInt(textSize.Width)
+                textOffset = CInt(textSize.Width + textSize.Height)
 
                 Using brush = New SolidBrush(If(Enabled, ForeColor, SystemColors.GrayText))
-                    e.Graphics.DrawString(Text, Font, brush, 0, CInt((Height - textSize.Height) / 2) - 1)
+                    e.Graphics.DrawString(Text, Font, brush, Padding.Left, CInt((Height - textSize.Height) / 2) - 1)
                 End Using
             End If
 
@@ -615,6 +628,11 @@ Namespace UI
             BorderStyle = BorderStyle.None
 
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
         End Sub
 
         Sub OnThemeChanged(theme As Theme)
@@ -754,6 +772,11 @@ Namespace UI
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
         End Sub
 
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
+        End Sub
+
         Sub OnThemeChanged(theme As Theme)
             ApplyTheme(theme)
         End Sub
@@ -837,6 +860,11 @@ Namespace UI
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
         End Sub
 
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
+        End Sub
+
         Sub OnThemeChanged(theme As Theme)
             ApplyTheme(theme)
         End Sub
@@ -891,6 +919,7 @@ Namespace UI
         <Browsable(False)>
         <DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)>
         Property BlockPaint As Boolean
+        ReadOnly Property Transparent As Boolean
 
         Public Property BackReadonlyColor As Color
             Get
@@ -950,10 +979,10 @@ Namespace UI
         Public Event AfterThemeApplied(text As String, theme As Theme)
 
         Sub New()
-            MyClass.New(True)
+            MyClass.New(True, False)
         End Sub
 
-        Sub New(createMenu As Boolean)
+        Sub New(createMenu As Boolean, transparent As Boolean)
             If createMenu Then
                 InitMenu()
             End If
@@ -962,8 +991,20 @@ Namespace UI
                 BorderStyle = BorderStyle.None
             End If
 
+            If transparent Then
+                SetStyle(ControlStyles.Opaque, True)
+                SetStyle(ControlStyles.OptimizedDoubleBuffer, False)
+                Me.Transparent = transparent
+            End If
+
             ApplyTheme()
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
+            ContextMenuStrip?.Dispose()
         End Sub
 
         Sub OnThemeChanged(theme As Theme)
@@ -989,6 +1030,17 @@ Namespace UI
             RaiseEvent AfterThemeApplied(Nothing, theme)
         End Sub
 
+        Protected Overrides ReadOnly Property CreateParams As CreateParams
+            Get
+                Dim parms = MyBase.CreateParams
+
+                If Transparent Then
+                    parms.ExStyle = parms.ExStyle Or &H20  'Turn on WS_EX_TRANSPARENT
+                End If
+
+                Return parms
+            End Get
+        End Property
         Sub InitMenu()
             If DesignHelp.IsDesignMode Then
                 Exit Sub
@@ -1027,12 +1079,6 @@ Namespace UI
                                     End Sub
 
             ContextMenuStrip = cms
-        End Sub
-
-        Protected Overrides Sub Dispose(disposing As Boolean)
-            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
-            MyBase.Dispose(disposing)
-            ContextMenuStrip?.Dispose()
         End Sub
 
         Protected Overrides Sub OnKeyDown(e As KeyEventArgs)
@@ -1171,6 +1217,11 @@ Namespace UI
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
         End Sub
 
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
+        End Sub
+
         Sub OnThemeChanged(theme As Theme)
             ApplyTheme(theme)
         End Sub
@@ -1223,6 +1274,11 @@ Namespace UI
             ApplyTheme()
 
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
         End Sub
 
         Sub OnThemeChanged(theme As Theme)
@@ -1308,6 +1364,11 @@ Namespace UI
             ApplyTheme()
 
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
         End Sub
 
         Private Function ShouldSerializeLinkColor() As Boolean
@@ -1400,6 +1461,11 @@ Namespace UI
             ApplyTheme()
 
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
         End Sub
 
         Sub OnThemeChanged(theme As Theme)
@@ -1915,6 +1981,11 @@ Namespace UI
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
         End Sub
 
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
+        End Sub
+
         Sub OnThemeChanged(theme As Theme)
             ApplyTheme(theme)
         End Sub
@@ -2338,6 +2409,11 @@ Namespace UI
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
         End Sub
 
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
+        End Sub
+
         Sub OnThemeChanged(theme As Theme)
             ApplyTheme(theme)
         End Sub
@@ -2621,12 +2697,24 @@ Namespace UI
             ApplyTheme()
 
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
-            AddHandler UpControl.MouseDown, Sub() Focus()
-            AddHandler DownControl.MouseDown, Sub() Focus()
-            AddHandler TextEdit.LostFocus, Sub() UpdateText()
+            AddHandler UpControl.MouseDown, AddressOf Focus
+            AddHandler DownControl.MouseDown, AddressOf Focus
+            AddHandler TextEdit.LostFocus, AddressOf UpdateText
             AddHandler TextEdit.GotFocus, AddressOf SetActive
             AddHandler TextEdit.LostFocus, AddressOf SetNormal
             AddHandler TextEdit.MouseWheel, AddressOf Wheel
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            TipProvider?.Dispose()
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            RemoveHandler UpControl.MouseDown, AddressOf Focus
+            RemoveHandler DownControl.MouseDown, AddressOf Focus
+            RemoveHandler TextEdit.LostFocus, AddressOf UpdateText
+            RemoveHandler TextEdit.GotFocus, AddressOf SetActive
+            RemoveHandler TextEdit.LostFocus, AddressOf SetNormal
+            RemoveHandler TextEdit.MouseWheel, AddressOf Wheel
+            MyBase.Dispose(disposing)
         End Sub
 
         Sub OnThemeChanged(theme As Theme)
@@ -2651,6 +2739,10 @@ Namespace UI
             'BorderNormalColor = theme.General.Controls.NumEdit.BorderColor
             'BorderSelectedColor = theme.General.Controls.NumEdit.BorderSelectedColor
             ResumeLayout()
+        End Sub
+
+        Overloads Sub Focus(sender As Object, e As MouseEventArgs)
+            Focus()
         End Sub
 
         WriteOnly Property Help As String
@@ -2702,16 +2794,11 @@ Namespace UI
             End Set
         End Property
 
-        Protected Overrides Sub Dispose(disposing As Boolean)
-            TipProvider?.Dispose()
-            MyBase.Dispose(disposing)
-        End Sub
-
         Sub Wheel(sender As Object, e As MouseEventArgs)
             If e.Delta > 0 Then
-                Value += Increment
+                UpControl.ClickAction?.Invoke()
             Else
-                Value -= Increment
+                DownControl.ClickAction?.Invoke()
             End If
         End Sub
 
@@ -2784,7 +2871,11 @@ Namespace UI
         End Sub
 
         Sub UpdateText()
-            TextEdit.TextBox.SetTextWithoutTextChangedEvent(ValueValue.ToString("F" & DecimalPlaces))
+            TextEdit.TextBox.SetTextWithoutTextChangedEvent(ValueValue.ToInvariantString("F" & DecimalPlaces))
+        End Sub
+
+        Sub UpdateText(sender As Object, e As EventArgs)
+            UpdateText()
         End Sub
 
         Sub TextBox_KeyDown(sender As Object, e As KeyEventArgs) Handles TextEdit.KeyDown
@@ -3068,6 +3159,11 @@ Namespace UI
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
         End Sub
 
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
+        End Sub
+
         Sub OnThemeChanged(theme As Theme)
             ApplyTheme(theme)
         End Sub
@@ -3149,6 +3245,11 @@ Namespace UI
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
         End Sub
 
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
+        End Sub
+
         Sub OnThemeChanged(theme As Theme)
             ApplyTheme(theme)
         End Sub
@@ -3198,6 +3299,11 @@ Namespace UI
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
 
             'AddHandler DrawItem, AddressOf DrawItemHandler
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
         End Sub
 
         Sub OnThemeChanged(theme As Theme)
@@ -3326,25 +3432,30 @@ Namespace UI
         Inherits Control
 
         Property ProgressColor As Color
+        Property Rtb As RichTextBoxEx
 
         Sub New()
             SetStyle(ControlStyles.ResizeRedraw, True)
             SetStyle(ControlStyles.Selectable, False)
             SetStyle(ControlStyles.OptimizedDoubleBuffer, True)
 
-            'If BackColor.GetBrightness > 0.5 Then
-            '    ForeColor = Color.FromArgb(10, 10, 10)
-            '    BackColor = Color.FromArgb(240, 240, 240)
-            '    ProgressColor = Color.FromArgb(180, 180, 180)
-            'Else
-            '    ForeColor = Color.FromArgb(240, 240, 240)
-            '    BackColor = Color.FromArgb(10, 10, 10)
-            '    ProgressColor = Color.FromArgb(100, 100, 100)
-            'End If
+            Rtb = New RichTextBoxEx(False, True) With {
+                .BorderStyle = BorderStyle.None,
+                .Dock = DockStyle.Fill,
+                .Font = g.GetCodeFont(9),
+                .Padding = New Padding(5, 5, 5, 0)
+            }
+
+            Controls.Add(Rtb)
 
             ApplyTheme()
 
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
         End Sub
 
         Sub OnThemeChanged(theme As Theme)
@@ -3356,14 +3467,14 @@ Namespace UI
         End Sub
 
         Sub ApplyTheme(theme As Theme)
-            If DesignHelp.IsDesignMode Then
-                Exit Sub
-            End If
+            If DesignHelp.IsDesignMode Then Exit Sub
 
             SuspendLayout()
             BackColor = theme.General.Controls.LabelProgressBar.BackColor
             ForeColor = theme.General.Controls.LabelProgressBar.ForeColor
             ProgressColor = theme.General.Controls.LabelProgressBar.ProgressColor
+
+            Rtb.ForeColor = theme.General.Controls.LabelProgressBar.ForeColor
             ResumeLayout()
         End Sub
 
@@ -3373,7 +3484,7 @@ Namespace UI
 
         Private _Minimum As Double
 
-        Public Property Minimum() As Double
+        Public Property Minimum As Double
             Get
                 Return _Minimum
             End Get
@@ -3387,7 +3498,7 @@ Namespace UI
 
         Private _Maximum As Double = 100
 
-        Public Property Maximum() As Double
+        Public Property Maximum As Double
             Get
                 Return _Maximum
             End Get
@@ -3401,7 +3512,7 @@ Namespace UI
 
         Private _Value As Double
 
-        Public Property Value() As Double
+        Public Property Value As Double
             Get
                 Return _Value
             End Get
@@ -3446,9 +3557,7 @@ Namespace UI
 
             If Not WrapContents AndAlso (FlowDirection = FlowDirection.TopDown OrElse FlowDirection = FlowDirection.BottomUp) Then
                 For Each i As Control In Controls
-                    If (i.Anchor And AnchorStyles.Right) = AnchorStyles.Right AndAlso
-                        (i.Anchor And AnchorStyles.Left) = AnchorStyles.Left Then
-
+                    If (i.Anchor And AnchorStyles.Right) = AnchorStyles.Right AndAlso (i.Anchor And AnchorStyles.Left) = AnchorStyles.Left Then
                         i.Left = i.Margin.Left
                         i.Width = ClientSize.Width - i.Margin.Horizontal
                     ElseIf (i.Anchor And AnchorStyles.Right) = AnchorStyles.Right Then
@@ -3458,4 +3567,103 @@ Namespace UI
             End If
         End Sub
     End Class
+
+
+    <Serializable()>
+    Public Class AudioTextEdit
+        Inherits TextEdit
+
+        Public Sub New()
+            AutoSize = True
+            Anchor = AnchorStyles.Left Or AnchorStyles.Top Or AnchorStyles.Right
+            Location = New Point(6, 7)
+            Margin = New Padding(FontHeight \ 3, FontHeight \ 6, FontHeight \ 3, FontHeight \ 4)
+            [ReadOnly] = False
+        End Sub
+
+        Public Sub New(row As Integer)
+            Me.New()
+        End Sub
+    End Class
+
+    <Serializable()>
+    Public Class AudioLanguageLabel
+        Inherits Label
+
+        Private _contextMenuStripEx As ContextMenuStripEx
+        Public Property ContextMenuStripEx As ContextMenuStripEx
+            Get
+                Return _contextMenuStripEx
+            End Get
+            Set(ByVal value As ContextMenuStripEx)
+                _contextMenuStripEx = value
+            End Set
+        End Property
+
+        Public Sub New()
+            AutoSize = True
+            Anchor = AnchorStyles.Left Or AnchorStyles.Top Or AnchorStyles.Right
+            BorderStyle = BorderStyle.None
+            Location = New Point(1687, 7)
+            Margin = New Padding(0, FontHeight \ 3, 0, FontHeight \ 7)
+            TabStop = True
+            Text = "Audio Language"
+            TextAlign = Drawing.ContentAlignment.BottomLeft
+        End Sub
+
+        Public Sub New(row As Integer)
+            Me.New()
+        End Sub
+    End Class
+
+    <Serializable()>
+    Public Class AudioNameButtonLabel
+        Inherits ButtonLabel
+
+        Private _contextMenuStripEx As ContextMenuStripEx
+        Public Property ContextMenuStripEx As ContextMenuStripEx
+            Get
+                Return _contextMenuStripEx
+            End Get
+            Set(ByVal value As ContextMenuStripEx)
+                _contextMenuStripEx = value
+            End Set
+        End Property
+
+        Public Sub New()
+            AutoSize = True
+            Anchor = AnchorStyles.Left Or AnchorStyles.Top Or AnchorStyles.Right
+            BorderStyle = BorderStyle.None
+            Location = New Point(1887, 7)
+            Margin = New Padding(0, FontHeight \ 3, 0, FontHeight \ 7)
+            TabStop = True
+            Text = "Audio Profile"
+            TextAlign = Drawing.ContentAlignment.BottomLeft
+        End Sub
+
+        Public Sub New(row As Integer)
+            Me.New()
+        End Sub
+    End Class
+
+    <Serializable()>
+    Public Class AudioEditButtonLabel
+        Inherits AudioNameButtonLabel
+
+        Public Sub New()
+            AutoSize = True
+            Anchor = AnchorStyles.Left Or AnchorStyles.Top Or AnchorStyles.Right
+            BorderStyle = BorderStyle.None
+            Location = New Point(1933, 7)
+            Margin = New Padding(FontHeight \ 3, FontHeight \ 3, FontHeight \ 3, FontHeight \ 7)
+            TabStop = True
+            Text = "Edit"
+            TextAlign = Drawing.ContentAlignment.BottomLeft
+        End Sub
+
+        Public Sub New(row As Integer)
+            Me.New()
+        End Sub
+    End Class
+
 End Namespace

@@ -21,14 +21,6 @@ Public Class ProcessingForm
     Friend WithEvents bnMenu As ButtonEx
     Friend WithEvents tlpMain As TableLayoutPanel
 
-    <System.Diagnostics.DebuggerNonUserCode()>
-    Protected Overloads Overrides Sub Dispose(disposing As Boolean)
-        If disposing AndAlso components IsNot Nothing Then
-            components.Dispose()
-        End If
-        MyBase.Dispose(disposing)
-    End Sub
-
     '<System.Diagnostics.DebuggerStepThrough()>
     Private Sub InitializeComponent()
         Me.components = New System.ComponentModel.Container()
@@ -114,7 +106,7 @@ Public Class ProcessingForm
         Me.bnLog.Name = "bnLog"
         Me.bnLog.Size = New System.Drawing.Size(260, 70)
         Me.bnLog.TabIndex = 13
-        Me.bnLog.Text = "Log (F7)"
+        Me.bnLog.Text = "Log (F8)"
         '
         'bnMenu
         '
@@ -203,14 +195,15 @@ Public Class ProcessingForm
         New KeyValuePair(Of ProcessPriorityClass, String)(ProcessPriorityClass.Idle, "Idle")
     }
 
-    Private TaskbarButtonCreatedMessage As Integer
-    Private StopAfterCurrentJobMenuItem As MenuItemEx
-    Private ProgressReformattingMenuItem As MenuItemEx
-    Private OutputHighlightingMenuItem As MenuItemEx
     Private CMS As ContextMenuStripEx
+    Private OutputHighlightingMenuItem As MenuItemEx
+    Private ProgressReformattingMenuItem As MenuItemEx
+    Private StopAfterCurrentJobMenuItem As MenuItemEx
+    Private TaskbarButtonCreatedMessage As Integer
 
     Private Const _priorityMenuName As String = "Priority"
     Private Const _themeMenuName As String = "Temporary Theme"
+    Private Const _progressMenuName As String = "Progress Highlighting"
 
     Property Taskbar As Taskbar
 
@@ -241,6 +234,11 @@ Public Class ProcessingForm
         OutputHighlightingMenuItem = CMS.Add("Output Highlighting", AddressOf SetOutputHighlighting, Keys.Control Or Keys.O)
         ProgressReformattingMenuItem = CMS.Add("Progress Reformatting", AddressOf SetProgressReformatting, Keys.Control Or Keys.P)
 
+        CMS.Add($"{_progressMenuName} | None", Sub() SetProgressHighlighting("None"))
+        For Each category In ThemeManager.ColorCategories
+            CMS.Add($"{_progressMenuName} | {category.Item1}", Sub() SetProgressHighlighting(category.Item1))
+        Next
+
         For Each theme In ThemeManager.Themes
             CMS.Add($"{_themeMenuName} | {theme.Name}", Sub() ThemeManager.SetCurrentTheme(theme.Name))
         Next
@@ -258,6 +256,12 @@ Public Class ProcessingForm
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
     End Sub
 
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
+    End Sub
+
     Sub OnThemeChanged(theme As Theme)
         ApplyTheme(theme)
     End Sub
@@ -267,9 +271,7 @@ Public Class ProcessingForm
     End Sub
 
     Sub ApplyTheme(theme As Theme)
-        If DesignHelp.IsDesignMode Then
-            Exit Sub
-        End If
+        If DesignHelp.IsDesignMode Then Exit Sub
 
         BackColor = theme.ProcessingForm.BackColor
     End Sub
@@ -342,13 +344,25 @@ Public Class ProcessingForm
         g.StopAfterCurrentJob = Not g.StopAfterCurrentJob
     End Sub
 
-    Sub SetProgressReformatting()
-        s.ProgressReformatting = Not s.ProgressReformatting
-    End Sub
-
     Sub SetOutputHighlighting()
         OutputHighlightingMenuItem.Checked = Not OutputHighlightingMenuItem.Checked
         ProcController.SetOutputHighlighting(OutputHighlightingMenuItem.Checked, ThemeManager.CurrentTheme)
+    End Sub
+
+    Sub SetProgressHighlighting(colorName As String)
+        If String.IsNullOrWhiteSpace(colorName) Then
+            s.ProgressHighlighting = False
+        ElseIf colorName = "None" Then
+            s.ProgressHighlighting = False
+            s.ProgressHighlightingColorName = colorName
+        Else
+            s.ProgressHighlighting = True
+            s.ProgressHighlightingColorName = colorName
+        End If
+    End Sub
+
+    Sub SetProgressReformatting()
+        s.ProgressReformatting = Not s.ProgressReformatting
     End Sub
 
     Sub Abort()
@@ -408,9 +422,7 @@ Public Class ProcessingForm
         StopAfterCurrentJobMenuItem.Enabled = g.IsJobProcessing
         StopAfterCurrentJobMenuItem.Checked = g.StopAfterCurrentJob
 
-        OutputHighlightingMenuItem.Enabled = g.IsJobProcessing
-
-        ProgressReformattingMenuItem.Enabled = g.IsJobProcessing
+        OutputHighlightingMenuItem.Checked = s.OutputHighlighting
         ProgressReformattingMenuItem.Checked = s.ProgressReformatting
 
         Dim priority = ProcController.GetProcessPriority()
@@ -418,6 +430,10 @@ Public Class ProcessingForm
         For Each item In CMS.GetItems().OfType(Of MenuItemEx).Where(Function(i) i.Path.StartsWith(_priorityMenuName + " | "))
             item.Enabled = priority.HasValue
             item.Checked = item.Path.EndsWith($" | {priorityText}")
+        Next
+
+        For Each item In CMS.GetItems().OfType(Of MenuItemEx).Where(Function(i) i.Path.StartsWith(_progressMenuName + " | "))
+            item.Checked = item.Path.EndsWith($" | {s.ProgressHighlightingColorName}")
         Next
 
         For Each item In CMS.GetItems().OfType(Of MenuItemEx).Where(Function(i) i.Path.StartsWith(_themeMenuName + " | "))

@@ -91,6 +91,12 @@ Public Class CommandLineForm
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
     End Sub
 
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
+    End Sub
+
     Sub OnThemeChanged(theme As Theme)
         ApplyTheme(theme)
     End Sub
@@ -253,7 +259,7 @@ Public Class CommandLineForm
 
                 Dim max = oParam.Options.Select(Function(txt) txt.Length).Max
 
-                If max > 24 Then
+                If tempOptionParam.Expanded OrElse max > 24 Then
                     menuBlock.Button.Expand = True
                 End If
 

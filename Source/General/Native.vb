@@ -10,6 +10,14 @@ Public Class Native
     Public Const SC_CLOSE As Integer = &HF060
     Public Const SC_MINIMIZE As Integer = &HF020
 
+    <DllImport("dwmapi.dll")>
+    Shared Function DwmSetWindowAttribute(
+        hwnd As IntPtr,
+        attr As Integer,
+        ByRef attrValue As Integer,
+        attrSize As Integer) As Integer
+    End Function
+
     <DllImport("gdi32.dll")>
     Shared Function ExcludeClipRect(
         hdc As IntPtr,
@@ -130,6 +138,10 @@ Public Class Native
         longPath As String,
         shortPath As StringBuilder,
         bufSize As Integer) As Integer
+    End Function
+
+    <DllImport("kernel32.dll", SetLastError:=True, CharSet:=CharSet.Auto)>
+    Shared Function GetDiskFreeSpaceEx(lpDirectoryName As String, ByRef lpFreeBytesAvailableToCaller As ULong, ByRef lpTotalNumberOfBytes As ULong, ByRef lpTotalNumberOfFreeBytes As ULong) As Boolean
     End Function
 
     <DllImport("uxtheme.dll", CharSet:=CharSet.Unicode)>

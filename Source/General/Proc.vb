@@ -120,7 +120,7 @@ Public Class Proc
         If commands.Contains("xvid_encraw") Then
             Return {"key=", "frames("}
         ElseIf commands.Contains("ffmpeg") Then
-            Return {"frame=", "size="}
+            Return {"frame=", "size=", "Press [q] to stop"}
         ElseIf commands.Contains("eac3to") Then
             Return {"process: ", "analyze: "}
         ElseIf commands.Contains("qaac") Then
@@ -332,17 +332,30 @@ Public Class Proc
                 End If
 
                 If ExitCode <> 0 AndAlso Not AllowedExitCodes.ContainsEx(ExitCode) Then
+                    Dim l = Log.ToString().Replace(Header, "")
+                    l = Regex.Replace(l, "^-+\s+-+\s*$", "", RegexOptions.Multiline)
+                    l = Regex.Replace(l, "^\s*", "", RegexOptions.Singleline)
+                    l = Regex.Replace(l, "\s*$", "", RegexOptions.Singleline)
+                    l.Trim()
+                    Log.Clear()
+
+                    Dim ec = $"{Header} returned exit code: {ExitCode} (0x{ExitCode:X})"
                     Dim sb = New StringBuilder()
-                    sb.Append($"{Header} returned exit code: {ExitCode} (0x{ExitCode:X})")
+                    sb.AppendLine(l)
+                    sb.AppendLine()
+                    sb.AppendLine()
+                    sb.AppendLine(ec)
+                    sb.AppendLine(New String("~"c, ec.Length))
+                    sb.AppendLine()
 
                     If s.ErrorMessageExtendedByErr Then
                         Dim errOutput = ProcessHelp.GetConsoleOutput(Package.Err.Path, "/ntstatus.h /winerror.h " & ExitCode)
-                        sb.Append($"{BR2}It's unclear what this exit code means, in case it's")
-                        sb.Append($"{BR}a Windows system error then it possibly means:")
-                        sb.Append($"{BR2}{errOutput}")
+                        sb.AppendLine("It's unclear what this exit code means, in case it's")
+                        sb.AppendLine("a Windows system error then it possibly means:")
+                        sb.AppendLine()
+                        sb.AppendLine(errOutput)
+                        sb.AppendLine()
                     End If
-
-                    sb.Append($"{BR2}{Log}{BR}")
 
                     Throw New ErrorAbortException("Error " + Header, sb.ToString(), Project)
                 End If
@@ -405,7 +418,7 @@ Public Class Proc
 
         Dim keys = dic.Keys.OfType(Of String).Select(Function(key) key.ToLowerInvariant)
 
-        For Each mac In Macro.GetMacros(False, False)
+        For Each mac In Macro.GetMacros(False, False, True)
             Dim name = mac.Name.Trim("%"c)
 
             If Not keys.Contains(name) Then
@@ -413,7 +426,7 @@ Public Class Proc
             End If
         Next
 
-        Dim path = dic("Path")
+        Dim path = dic("path")
 
         For Each pack In Package.Items.Values
             If pack.Path.Ext = "exe" AndAlso pack.HelpSwitch IsNot Nothing AndAlso
@@ -423,7 +436,7 @@ Public Class Proc
             End If
         Next
 
-        Dim cppDir = Folder.Startup + "Apps\Support\VC"
+        Dim cppDir = IO.Path.Combine(Folder.Startup, "Apps", "Support", "VC")
 
         If Not path.Contains(cppDir + ";") Then
             path = cppDir + ";" + path
@@ -436,6 +449,8 @@ Public Class Proc
         If value = "" Then
             Return ("", False)
         End If
+
+        value = Regex.Replace(value, "\x1B\[[0-9;]*[mK]", "")
 
         If TrimChars IsNot Nothing Then
             value = value.Trim(TrimChars)

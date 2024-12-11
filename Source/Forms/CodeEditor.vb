@@ -46,6 +46,12 @@ Public Class CodeEditor
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
     End Sub
 
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
+    End Sub
+
     Sub OnThemeChanged(theme As Theme)
         ApplyTheme(theme)
     End Sub
@@ -372,8 +378,8 @@ Public Class CodeEditor
         ret.Add("Add", NameOf(g.DefaultCommands.DynamicMenuItem), Symbol.Add, {DynamicMenuItemID.AddFilters})
         ret.Add("-")
         ret.Add("Apply all Filters", NameOf(ApplyFilters), Keys.Control Or Keys.S, Symbol.Save)
-        ret.Add("Preview Video...", NameOf(ShowVideoPreview), Keys.F4, Symbol.fa_eye)
-        ret.Add("Preview Code...", NameOf(ShowCodePreview), Symbol.Code)
+        ret.Add("Preview Video...", NameOf(ShowVideoPreview), Keys.F6, Symbol.fa_eye)
+        ret.Add("Preview Code...", NameOf(ShowCodePreview), Keys.F4, Symbol.Code)
         ret.Add("Play", NameOf(PlayWithMpvnet), Keys.F9, Symbol.Play)
         ret.Add("Info...", NameOf(ShowInfo), Keys.F2, Symbol.Info)
         ret.Add("Advanced Info...", NameOf(ShowAdvancedInfo), Keys.Control Or Keys.F2, Symbol.Lightbulb)
@@ -428,11 +434,12 @@ Public Class CodeEditor
     Function CreateTempScript() As VideoScript
         Dim script As New VideoScript
         script.Engine = Engine
-        script.Path = p.TempDir + p.TargetFile.Base + $"_temp." + script.FileType
+        script.Path = Path.Combine(p.TempDir, p.TargetFile.Base + $"_temp." + script.FileType)
         script.Filters = GetFilters()
+        Dim err = script.GetError()
 
-        If script.GetError <> "" Then
-            MsgError("Script Error", script.GetError)
+        If err <> "" Then
+            MsgError("Script Error", err)
             Exit Function
         End If
 
@@ -580,7 +587,7 @@ Public Class CodeEditor
             tbName.Dock = DockStyle.Top
             tbName.Margin = New Padding(0, 0, 0, 0)
 
-            rtbScript = New RichTextBoxEx(False)
+            rtbScript = New RichTextBoxEx(False, False)
             rtbScript.EnableAutoDragDrop = False
             rtbScript.Dock = DockStyle.Fill
             rtbScript.WordWrap = False
@@ -657,6 +664,11 @@ Public Class CodeEditor
             ApplyTheme()
 
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
         End Sub
 
         Sub OnThemeChanged(theme As Theme)

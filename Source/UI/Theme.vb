@@ -857,6 +857,10 @@ Public Class Theme
             Public Property ParameterValueForeColor As ColorHSL = New ColorHSL(270, 0.99, 0.5, 1)
             Public Property ParameterValueFontStyles As FontStyle() = {}
 
+            Public Property PipeBackColor As ColorHSL = Color.Transparent
+            Public Property PipeForeColor As ColorHSL = New ColorHSL(0, 0.99, 0.4, 1)
+            Public Property PipeFontStyles As FontStyle() = {FontStyle.Bold}
+
             Public Property ExeFileBackColor As ColorHSL = Color.Transparent
             Public Property ExeFileForeColor As ColorHSL = New ColorHSL(180, 0.99, 0.4, 1)
             Public Property ExeFileFontStyles As FontStyle() = {}
@@ -909,7 +913,6 @@ Public Class Theme
             Public Property EncoderBackColor As ColorHSL = Color.Transparent
             Public Property EncoderForeColor As ColorHSL = New ColorHSL(220, 0.99, 0.33, 1)
             Public Property EncoderFontStyles As FontStyle() = {}
-
         End Class
     End Class
 

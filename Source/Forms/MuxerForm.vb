@@ -10,14 +10,6 @@ Public Class MuxerForm
     Inherits DialogBase
 
 #Region " Designer "
-
-    Protected Overloads Overrides Sub Dispose(disposing As Boolean)
-        If disposing Then
-            components?.Dispose()
-        End If
-        MyBase.Dispose(disposing)
-    End Sub
-
     Friend WithEvents TipProvider As StaxRip.UI.TipProvider
     Friend WithEvents bnCommandLinePreview As ButtonEx
     Friend WithEvents CommandLineControl As StaxRip.CommandLineControl
@@ -662,7 +654,7 @@ Public Class MuxerForm
         lbAttachments.Items.AddRange(muxer.Attachments.Select(Function(val) New AttachmentContainer With {.Filepath = val}).ToArray)
         lbAttachments.RemoveButton = bnAttachmentRemove
 
-        AudioBindingSource.DataSource = ObjectHelp.GetCopy(p.AudioTracks)
+        AudioBindingSource.DataSource = ObjectHelp.GetCopy(p.AudioFiles)
 
         dgvAudio.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells
         dgvAudio.MultiSelect = False
@@ -803,6 +795,12 @@ Public Class MuxerForm
         ApplyTheme()
 
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+    End Sub
+
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
     End Sub
 
     Sub OnThemeChanged(theme As Theme)
@@ -979,7 +977,7 @@ Public Class MuxerForm
         SetValues()
 
         If DialogResult = DialogResult.OK Then
-            p.AudioTracks = DirectCast(AudioBindingSource.DataSource, List(Of AudioProfile))
+            p.AudioFiles = DirectCast(AudioBindingSource.DataSource, List(Of AudioProfile))
             Muxer.Attachments.Clear()
             Muxer.Attachments.AddRange(lbAttachments.Items.OfType(Of AttachmentContainer).Select(Function(val) val.Filepath))
         End If
@@ -1003,9 +1001,15 @@ Public Class MuxerForm
     End Sub
 
     Sub PopulateLanguages(menuButton As MenuButton)
+        If IsDisposingOrDisposed Then Return
+
         Try
-            menuButton.Menu.Enabled = False
-            menuButton.Enabled = False
+            menuButton.Invoke(Sub()
+                                  menuButton.Menu.Enabled = False
+                                  menuButton.Enabled = False
+                                  menuButton.Menu.SuspendLayout()
+                                  menuButton.SuspendLayout()
+                              End Sub)
 
             For Each lng In Language.Languages.OrderBy(Function(x) x.EnglishName)
                 If IsDisposingOrDisposed Then Return
@@ -1018,12 +1022,20 @@ Public Class MuxerForm
             Next
         Catch ex As Exception
         Finally
-            menuButton.Enabled = True
-            menuButton.Menu.Enabled = True
+            If Not IsDisposingOrDisposed Then
+                menuButton.Invoke(Sub()
+                                      menuButton.Menu.ResumeLayout()
+                                      menuButton.ResumeLayout()
+                                      menuButton.Menu.Enabled = True
+                                      menuButton.Enabled = True
+                                  End Sub)
+            End If
         End Try
     End Sub
 
     Async Sub PopulateLanguagesAsync(menuButton As MenuButton)
+        If IsDisposingOrDisposed Then Return
+
         Dim task As Task
 
         Try
@@ -1033,6 +1045,8 @@ Public Class MuxerForm
         Catch ex As Exception
         Finally
         End Try
+
+        If IsDisposingOrDisposed Then Return
 
         Await task
     End Sub
@@ -1079,7 +1093,7 @@ Public Class MuxerForm
         Dim selectedSubtitles = dgvSubtitles.SelectedRows.Count > 0
         Dim subtitlePath = If(selectedSubtitles AndAlso dgvSubtitles.CurrentRow.Index < SubtitleItems.Count, SubtitleItems(dgvSubtitles.CurrentRow.Index).Subtitle.Path, "")
         bnSubtitleBDSup2SubPP.Enabled = selectedSubtitles AndAlso {"idx", "sup"}.Contains(subtitlePath.Ext)
-        bnSubtitleEdit.Enabled = bnSubtitleBDSup2SubPP.Enabled
+        bnSubtitleEdit.Enabled = selectedSubtitles
         bnSubtitlePlay.Enabled = p.SourceFile <> "" AndAlso selectedSubtitles
         bnSubtitleUp.Enabled = dgvSubtitles.CanMoveUp
         bnSubtitleDown.Enabled = dgvSubtitles.CanMoveDown
@@ -1195,7 +1209,7 @@ Public Class MuxerForm
         Dim filepath = st.Path
 
         If st.Path.Ext = "idx" Then
-            filepath = p.TempDir + p.TargetFile.Base + "_play.idx"
+            filepath = Path.Combine(p.TempDir, p.TargetFile.Base + "_play.idx")
             Regex.Replace(st.Path.ReadAllText, "langidx: \d+", "langidx: " +
                           st.IndexIDX.ToString).WriteFileSystemEncoding(filepath)
             FileHelp.Copy(st.Path.DirAndBase + ".sub", filepath.DirAndBase + ".sub")
@@ -1251,7 +1265,7 @@ Public Class MuxerForm
     Sub bnAudioEdit_Click(sender As Object, e As EventArgs) Handles bnAudioEdit.Click
         Dim ap = DirectCast(AudioBindingSource(dgvAudio.SelectedRows(0).Index), AudioProfile)
         ap.EditProject()
-        g.MainForm.UpdateAudioMenu()
+        g.MainForm.UpdateAudioMenus()
         g.MainForm.UpdateSizeOrBitrate()
         AudioBindingSource.ResetBindings(False)
     End Sub
@@ -1321,7 +1335,7 @@ Public Class MuxerForm
             "A muxer merges different video, audio and subtitle files " +
             "into a single container file which is the actual output file.")
         form.Doc.WriteTips(TipProvider.GetTips, SimpleUI.ActivePage.TipProvider.GetTips)
-        form.Doc.WriteTable("Macros", Macro.GetTips(False, True))
+        form.Doc.WriteTable("Macros", Macro.GetTips(False, True, True))
         form.Show()
     End Sub
 
@@ -1434,7 +1448,7 @@ Public Class MuxerForm
             Dim fp = st.Path
 
             If fp.Ext = "idx" Then
-                fp = p.TempDir + p.TargetFile.Base + "_temp.idx"
+                fp = Path.Combine(p.TempDir, p.TargetFile.Base + "_temp.idx")
                 Regex.Replace(st.Path.ReadAllText, "langidx: \d+", "langidx: " + st.IndexIDX.ToString).WriteFileSystemEncoding(fp)
                 FileHelp.Copy(st.Path.DirAndBase + ".sub", fp.DirAndBase + ".sub")
             End If
@@ -1451,7 +1465,7 @@ Public Class MuxerForm
             Dim fp = st.Path
 
             If fp.ExtFull = ".idx" Then
-                fp = p.TempDir + p.TargetFile.Base + "_temp.idx"
+                fp = Path.Combine(p.TempDir, p.TargetFile.Base + "_temp.idx")
                 Regex.Replace(st.Path.ReadAllText, "langidx: \d+", "langidx: " + st.IndexIDX.ToString).WriteFileSystemEncoding(fp)
                 FileHelp.Copy(st.Path.DirAndBase + ".sub", fp.DirAndBase + ".sub")
             End If

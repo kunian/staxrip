@@ -1,4 +1,5 @@
 
+Imports System.Reflection
 Imports StaxRip.UI
 
 <Serializable()>
@@ -7,16 +8,17 @@ Public Class ApplicationSettings
 
     Public AllowCustomPathsInStartupFolder As Boolean
     Public AllowToolsWithWrongVersion As Boolean
+    <NonSerialized> Public ApplicationExitMode As ApplicationExitMode = ApplicationExitMode.Regular
     Public AudioProfiles As List(Of AudioProfile)
     Public AutoSaveProject As Boolean
     Public AviSynthFilterPreferences As StringPairList
     Public AviSynthMode As FrameServerMode
     Public AviSynthProfiles As List(Of FilterCategory)
     Public BinaryPrefix As Boolean = False
-    Public CheckForUpdates As Boolean
+    Public CheckForUpdates As Boolean = True
     Public CheckForUpdatesDismissed As String
-    Public CheckForUpdatesLastRequest As DateTime
-    Public CheckForUpdatesQuestion As Boolean
+    Public CheckForUpdatesLastRequest As DateTime = DateTime.Now
+    Public CheckForUpdatesQuestion As Boolean = False
     Public CmdlPresetsEac3to As String
     Public CmdlPresetsMKV As String
     Public CmdlPresetsMP4 As String
@@ -28,22 +30,22 @@ Public Class ApplicationSettings
     Public CommandLinePreview As CommandLinePreview = CommandLinePreview.CodePreview
     Public CommandLinePreviewWithLineNumbers As Boolean = True
     Public CropColor As Color
-    Public CropFrameCount As Integer
     Public CustomMenuCodeEditor As CustomMenuItem
     Public CustomMenuCrop As CustomMenuItem
     Public CustomMenuMainForm As CustomMenuItem
     Public CustomMenuPreview As CustomMenuItem
     Public CustomMenuSize As CustomMenuItem
     Public DarMenu As String
-    Public DeleteTempFilesMode As DeleteMode
     Public Demuxers As List(Of Demuxer)
     Public eac3toProfiles As List(Of eac3toProfile)
     Public EnableTooltips As Boolean
     Public ErrorMessageExtendedByErr As Boolean = False
+    Public ErrorMessageTimeout As Integer = 120
     Public EventCommands As List(Of EventCommand)
+    Public EventWhileProcessingCooldown As Integer = 60
     Public ExpandPreviewWindow As Boolean = True
-    Public ApplicationExitMode As ApplicationExitMode = ApplicationExitMode.Regular
     Public FilterSetupProfiles As List(Of TargetVideoScript)
+    Public FirstRunOnVersion As KeyValuePair(Of String, DateTime) = New KeyValuePair(Of String, Date)(g.DefaultCommands.GetApplicationDetails(), DateTime.Now)
     Public FixFrameRate As Boolean = True
     Public HidePreviewButtons As Boolean
     Public IconFile As String
@@ -54,7 +56,7 @@ Public Class ApplicationSettings
     Public LoadAviSynthPlugins As Boolean = True
     Public LoadVapourSynthPlugins As Boolean = True
     Public LogEventCommand As Boolean
-    Public LogFileNum As Integer = 50
+    Public LogFileNum As Integer = 200
     Public MinimizeToTray As Boolean
     Public MinimumDiskSpace As Integer = 20
     Public MuxerProfiles As List(Of Muxer)
@@ -63,21 +65,25 @@ Public Class ApplicationSettings
     Public ParallelProcsNum As Integer = 3
     Public ParMenu As String
     Public PreferWindowsTerminal As Boolean = False
-    Public PreventFocusStealAfter As Integer = 45
+    Public PreventFocusStealAfter As Integer = 15
     Public PreventFocusStealUntil As Integer = -1
     Public PreventStandby As Boolean = True
-    Public PreviewFormBorderStyle As FormBorderStyle
+    Public PreviewFormBorderStyle As FormBorderStyle = FormBorderStyle.Sizable
     Public PreviewSize As Integer = 70
-    Public ProcessPriority As ProcessPriorityClass = ProcessPriorityClass.Idle
+    Public ProcessPriority As ProcessPriorityClass = ProcessPriorityClass.BelowNormal
+    Public ProgressHighlighting As Boolean = True
+    Public ProgressHighlightingColorName As String = ThemeManager.ColorCategories(1).Item1
     Public ProgressReformatting As Boolean = True
-    Public ProjectsMruNum As Integer = 10
+    Public ProjectsMruNum As Integer = 15
     Public RecentFramePositions As List(Of String)
     Public RecentOptionsPage As String
     Public RecentProjects As List(Of String)
     Public ReverseVideoScrollDirection As Boolean
+    Public SaveImagePreviewFrameNumberPosition As ImageFrameNumberPosition = ImageFrameNumberPosition.Suffix
+    Public SaveImageVideoComparisonFrameNumberPosition As ImageFrameNumberPosition = ImageFrameNumberPosition.Prefix
     Public ShowChangelog As String
     Public ShowPathsInCommandLine As Boolean
-    Public ShowPreviewInfo As Boolean
+    Public ShowPreviewInfo As Boolean = True
     Public ShowTemplateSelection As Boolean
     Public ShowWindows7Warning As Boolean = True
     Public ShutdownForce As Boolean
@@ -87,7 +93,7 @@ Public Class ApplicationSettings
     Public StringDictionary As Dictionary(Of String, String)
     Public StringList As List(Of String)
     Public TargetImageSizeMenu As String
-    Public ThemeName As String
+    Public ThemeName As String = ThemeManager.DefaultThemeName
     Public ThumbnailBackgroundColor As Color = Color.AliceBlue
     Public UIFallback As Boolean = False
     Public UIScaleFactor As Single = 1.0F
@@ -95,6 +101,7 @@ Public Class ApplicationSettings
     Public VapourSynthMode As FrameServerMode
     Public VapourSynthProfiles As List(Of FilterCategory)
     Public VerifyToolStatus As Boolean = True
+    Public Version As Version = Assembly.GetExecutingAssembly.GetName.Version
     Public Versions As Dictionary(Of String, Integer)
     Public VideoEncoderProfiles As List(Of VideoEncoder)
     Public WindowPositions As WindowPositions
@@ -244,8 +251,9 @@ Public Class ApplicationSettings
             CmdlPresetsEac3to = GetDefaultEac3toMenu()
         End If
 
-        If Check(CmdlPresetsMP4, "MP4 custom command line menu presets", 8) Then
-            CmdlPresetsMP4 = "iPod = -ipod"
+        If Check(CmdlPresetsMP4, "MP4 custom command line menu presets", 2) Then
+            CmdlPresetsMP4 = "iPod = -ipod" + BR + 
+                             "Streaming = -inter 500"
         End If
 
         If Check(CmdlPresetsX264, "x264 custom command line menu presets", 8) OrElse CmdlPresetsX264 = "" Then
@@ -277,15 +285,11 @@ Public Class ApplicationSettings
             RecentFramePositions = New List(Of String)
         End If
 
-        If CropFrameCount = 0 Then
-            CropFrameCount = 15
-        End If
-
         If Check(CustomMenuCrop, "Menu in crop dialog", 18) Then
             CustomMenuCrop = CropForm.GetDefaultMenuCrop
         End If
 
-        If Check(CustomMenuMainForm, "Main menu in main window", 165) Then
+        If Check(CustomMenuMainForm, "Main menu in main window", 166) Then
             CustomMenuMainForm = MainForm.GetDefaultMainMenu
         End If
 

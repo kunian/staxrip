@@ -11,7 +11,7 @@ Public Class AOMEnc
     Property ParamsStore As New PrimitiveStore
 
     Sub New()
-        Name = "AV1 | AOMEnc"
+        Name = "AOMEnc"
     End Sub
 
     <NonSerialized>
@@ -38,6 +38,12 @@ Public Class AOMEnc
         Set(value As AV1Params)
             ParamsValue = value
         End Set
+    End Property
+
+    Overrides ReadOnly Property Codec As String
+        Get
+            Return "av1"
+        End Get
     End Property
 
     Overrides ReadOnly Property OutputExt As String
@@ -93,24 +99,23 @@ Public Class AOMEnc
         Dim ret As New List(Of Action)
 
         For chunk = 0 To chunkCount - 1
-            Dim name = ""
             Dim chunkStart = startFrame + (chunk * chunkLength)
             Dim chunkEnd = If(chunk <> chunkCount - 1, chunkStart + (chunkLength - 1), endFrame)
+            Dim chunkName = ""
+            Dim passName = ""
 
-            If chunk > 0 Then
-                name = "_chunk" & (chunk + 1)
+            If chunkCount > 1 Then
+                chunkName = "_chunk" & (chunk + 1)
+                passName = " chunk " & (chunk + 1)
             End If
 
             If Params.Passes.Value = 1 Then
                 ret.Add(Sub()
-                            Encode("Video encoding pass 1" + name.Replace("_chunk", " chunk "),
-                                   GetArgs(1, chunkStart, chunkEnd, name, p.Script), s.ProcessPriority)
-                            Encode("Video encoding pass 2" + name.Replace("_chunk", " chunk "),
-                                   GetArgs(2, chunkStart, chunkEnd, name, p.Script), s.ProcessPriority)
+                            Encode("Video encoding pass 1" + passName, GetArgs(1, chunkStart, chunkEnd, chunkName, p.Script), s.ProcessPriority)
+                            Encode("Video encoding pass 2" + passName, GetArgs(2, chunkStart, chunkEnd, chunkName, p.Script), s.ProcessPriority)
                         End Sub)
             Else
-                ret.Add(Sub() Encode("Video encoding" + name.Replace("_chunk", " chunk "),
-                    GetArgs(1, chunkStart, chunkEnd, name, p.Script), s.ProcessPriority))
+                ret.Add(Sub() Encode("Video encoding" + passName, GetArgs(1, chunkStart, chunkEnd, chunkName, p.Script), s.ProcessPriority))
             End If
         Next
 

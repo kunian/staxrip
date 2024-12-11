@@ -7,13 +7,6 @@ Public Class CropForm
     Inherits DialogBase
 
 #Region " Designer "
-    Protected Overloads Overrides Sub Dispose(disposing As Boolean)
-        If disposing Then
-            components?.Dispose()
-        End If
-        MyBase.Dispose(disposing)
-    End Sub
-
     Private components As System.ComponentModel.IContainer
 
     Friend WithEvents pnLeftActive As PanelEx
@@ -217,6 +210,12 @@ Public Class CropForm
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
     End Sub
 
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
+    End Sub
+
     Sub OnThemeChanged(theme As Theme)
         ApplyTheme(theme)
     End Sub
@@ -255,7 +254,7 @@ Public Class CropForm
 
         Dim script As New VideoScript
         script.Engine = p.Script.Engine
-        script.Path = p.TempDir + p.TargetFile.Base + "_crop." + script.FileType
+        script.Path = Path.Combine(p.TempDir, p.TargetFile.Base + "_crop." + script.FileType)
         script.Filters.Add(p.Script.GetFilter("Source").GetCopy())
 
         If p.Script.GetFilter("Rotation") IsNot Nothing Then
@@ -263,7 +262,7 @@ Public Class CropForm
         End If
 
         If p.CropWithTonemapping Then
-            If p.SourceVideoBitDepth > 8 AndAlso Not p.SourceVideoHdrFormat.ContainsAny("", "SDR") Then
+            If p.SourceVideoBitDepth > 8 AndAlso Not p.SourceVideoHdrFormat?.EqualsAny("", "SDR") Then
                 If p.Script.Engine = ScriptEngine.AviSynth AndAlso Package.AVSLibPlacebo.RequirementsFulfilled Then
                     script.Filters.Add(New VideoFilter("Color", "Tonemap", "ConvertBits(16)" + BR + "libplacebo_Tonemap()" + BR + "ConvertToYUV420()" + BR + "ConvertBits(8)"))
                 ElseIf p.Script.Engine = ScriptEngine.VapourSynth AndAlso Package.VSLibPlacebo.RequirementsFulfilled Then
@@ -283,7 +282,9 @@ Public Class CropForm
         script.Synchronize(True, True, True)
 
         FrameServer = FrameServerFactory.Create(script.Path)
-        Renderer = New VideoRenderer(pnVideo, FrameServer)
+        Renderer = New VideoRenderer(pnVideo, FrameServer) With {
+            .Info = script.Info
+        }
 
         If s.LastPosition < (FrameServer.Info.FrameCount - 1) Then
             Renderer.Position = s.LastPosition
@@ -327,9 +328,17 @@ Public Class CropForm
     End Sub
 
     Sub TrackLength_Scroll() Handles tbPosition.Scroll
-        Renderer.Position = tbPosition.Value
-        Renderer.Draw()
-        UpdateAll()
+        SetPos(tbPosition.Value)
+    End Sub
+
+    Sub SetPos(pos As Integer)
+        Try
+            Renderer.Position = pos
+            tbPosition.Value = Renderer.Position
+            Renderer.Draw()
+            UpdateAll()
+        Catch
+        End Try
     End Sub
 
     Protected Overrides Sub OnSizeChanged(args As EventArgs)
@@ -484,12 +493,19 @@ Public Class CropForm
         Dim cropw = p.SourceWidth - p.CropLeft - p.CropRight
         Dim croph = p.SourceHeight - p.CropTop - p.CropBottom
 
+        Dim time = ""
+        If Renderer.Info.FrameRate > 0 Then
+            Dim lengthDate = Date.Today.AddSeconds(Renderer.Position / Renderer.Info.FrameRate)
+            time = lengthDate.ToString(If(lengthDate.Hour = 0, "mm:ss.fff", "HH:mm:ss.fff"))
+        End If
+
         Dim isResized = p.Script.IsFilterActive("Resize")
         Dim isValidAnamorphicSize = (p.TargetWidth = 1440 AndAlso p.TargetHeight = 1080) OrElse (p.TargetWidth = 960 AndAlso p.TargetHeight = 720)
         Dim err = If(isResized AndAlso Not isValidAnamorphicSize, Calc.GetAspectRatioError.ToString("f2") + "%", "n/a")
 
         laStatus.Text =
-            "  Frame: " & Renderer.Position.ToString().PadLeft(5) &
+            "  Frame: " & Renderer.Position.ToString().PadLeft(6) &
+            "  |  Time: " & time &
             "  |  Size: " & cropw & "/" & croph &
             "  |  X: " & p.CropLeft & "/" & p.CropRight &
             "  |  Y: " & p.CropTop & "/" & p.CropBottom &
@@ -554,10 +570,16 @@ Public Class CropForm
         ret.Add("Increase Active And Opposite Side Large", NameOf(CropActiveAndOppositeSide), Keys.Add Or Keys.Control Or Keys.Shift, {8, 8})
         ret.Add("Decrease Active And Opposite Side Large", NameOf(CropActiveAndOppositeSide), Keys.Subtract Or Keys.Control Or Keys.Shift, {-8, -8})
         ret.Add("-")
-        ret.Add("Navigate 100 Frames Backward", NameOf(SetRelativePosition), Keys.PageUp, {-100})
-        ret.Add("Navigate 1000 Frames Backward", NameOf(SetRelativePosition), Keys.PageUp Or Keys.Control, {-1000})
-        ret.Add("Navigate 1000 Frames Forward", NameOf(SetRelativePosition), Keys.PageDown Or Keys.Control, {1000})
-        ret.Add("Navigate 100 Frames Forward", NameOf(SetRelativePosition), Keys.PageDown, {100})
+        ret.Add("Navigation|Go To Frame...", NameOf(GoToFrame), Keys.F)
+        ret.Add("Navigation|Go To Time...", NameOf(GoToTime), Keys.T)
+        ret.Add("Navigation|-")
+        ret.Add("Navigation|Go To Start", NameOf(SetAbsolutePosition), Keys.Control Or Keys.Left, {0})
+        ret.Add("Navigation|100 Frames Backward", NameOf(SetRelativePosition), Keys.PageUp, {-100})
+        ret.Add("Navigation|1000 Frames Backward", NameOf(SetRelativePosition), Keys.PageUp Or Keys.Control, {-1000})
+        ret.Add("Navigation|-")
+        ret.Add("Navigation|100 Frames Forward", NameOf(SetRelativePosition), Keys.PageDown, {100})
+        ret.Add("Navigation|1000 Frames Forward", NameOf(SetRelativePosition), Keys.PageDown Or Keys.Control, {1000})
+        ret.Add("Navigation|Go To End", NameOf(SetAbsolutePosition), Keys.Control Or Keys.Right, {1000000000})
         ret.Add("-")
         ret.Add("Crop Color | Theme", NameOf(SetCropColor), {Color.Empty})
         ret.Add("Crop Color | White", NameOf(SetCropColor), {Color.White})
@@ -625,7 +647,7 @@ Public Class CropForm
                       End Sub)
 
         tbPosition.Value = 0
-        UpdateAll()
+        TrackLength_Scroll()
     End Sub
 
     <Command("Crops until the proper aspect ratio is found.")>
@@ -658,11 +680,34 @@ Public Class CropForm
         Renderer.Draw()
     End Sub
 
-    <Command("Jumps a given frame count.")>
-    Sub SetRelativePosition(
-        <DispName("Offset"), Description("Frames to jump, negative values jump backward.")>
-        offset As Integer)
+    <Command("Dialog to jump to a specific time.")>
+    Sub GoToTime()
+        Dim d As Date
+        d = d.AddSeconds(Renderer.Position / FrameServer.FrameRate)
+        Dim value = InputBox.Show("Go To Time", d.ToString("HH:mm:ss.fff"))
 
+        If value <> "" Then
+            SetPos(CInt((TimeSpan.Parse(value).TotalMilliseconds / 1000) * FrameServer.FrameRate))
+        End If
+    End Sub
+
+    <Command("Dialog to jump to a specific frame.")>
+    Sub GoToFrame()
+        Dim value = InputBox.Show("Go To Frame", Renderer.Position.ToString)
+        Dim pos As Integer
+
+        If Integer.TryParse(value, pos) Then
+            SetPos(pos)
+        End If
+    End Sub
+
+    <Command("Jumps to a given frame.")>
+    Sub SetAbsolutePosition(<DispName("Position")> pos As Integer)
+        SetPos(pos)
+    End Sub
+
+    <Command("Jumps a given frame count.")>
+    Sub SetRelativePosition(<DispName("Offset"), Description("Frames to jump, negative values jump backward.")> offset As Integer)
         Renderer.Position += offset
         tbPosition.Value = Renderer.Position
         Renderer.Draw()

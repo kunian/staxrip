@@ -7,12 +7,12 @@ Imports StaxRip.UI
 
 Public Class Documentation
     Shared Sub GenerateWikiContent()
-        Dim outDir = Folder.Settings + "Wiki Pages\"
+        Dim outDir = Path.Combine(Folder.Settings, "Wiki Pages")
         FolderHelp.Create(outDir)
-        GetCommands(True).WriteFileUTF8(outDir + "CLI.md")
-        GetCommands(False).WriteFileUTF8(outDir + "Commands.md")
-        GetMacros.WriteFileUTF8(outDir + "Macros.md")
-        GetTools.WriteFileUTF8(outDir + "Tools.md")
+        GetCommands(True).WriteFileUTF8(Path.Combine(outDir, "CLI.md"))
+        GetCommands(False).WriteFileUTF8(Path.Combine(outDir, "Commands.md"))
+        GetMacros.WriteFileUTF8(Path.Combine(outDir, "Macros.md"))
+        GetTools.WriteFileUTF8(Path.Combine(outDir, "Tools.md"))
         g.ShellExecute(outDir)
     End Sub
 
@@ -45,7 +45,7 @@ Public Class Documentation
                 For Each param In params
                     Dim descAttrib = param.GetCustomAttribute(Of DescriptionAttribute)
 
-                    If (Not descAttrib Is Nothing AndAlso descAttrib.Description <> "") OrElse
+                    If (descAttrib IsNot Nothing AndAlso descAttrib.Description <> "") OrElse
                         param.ParameterType.IsEnum Then
 
                         needsSecondColumn = True
@@ -65,7 +65,7 @@ Public Class Documentation
                         Dim name = param.Name
                         Dim nameAttrib = param.GetCustomAttribute(Of DispNameAttribute)
 
-                        If Not nameAttrib Is Nothing Then
+                        If nameAttrib IsNot Nothing Then
                             name = nameAttrib.DisplayName
                         End If
 
@@ -78,7 +78,7 @@ Public Class Documentation
                         Else
                             Dim descAttrib = param.GetCustomAttribute(Of DescriptionAttribute)
 
-                            If Not descAttrib Is Nothing Then
+                            If descAttrib IsNot Nothing Then
                                 sb.AppendLine($" {descAttrib.Description} |")
                                 descAttrib.Description.ThrowIfContainsNewLine
                             Else
@@ -89,7 +89,7 @@ Public Class Documentation
                         Dim name = param.Name
                         Dim nameAttrib = param.GetCustomAttribute(Of DispNameAttribute)
 
-                        If Not nameAttrib Is Nothing Then
+                        If nameAttrib IsNot Nothing Then
                             name = nameAttrib.DisplayName
                         End If
 
@@ -109,7 +109,7 @@ Public Class Documentation
     Shared Function GetMacros() As String
         Dim sb As New StringBuilder("| Name | Description |" + BR + "|---|---|" + BR)
 
-        For Each tip In Macro.GetTips(False, True)
+        For Each tip In Macro.GetTips(False, True, True)
             sb.AppendLine("| " + tip.Name + " | " + tip.Value + " |")
         Next
 

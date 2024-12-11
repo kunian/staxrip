@@ -2,10 +2,10 @@
 [![GitHub License](https://img.shields.io/github/license/staxrip/staxrip?style=plastic&logo=GitHub&logoColor=white&label=License&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(110%2C%2060%25%2C%2050%25))](https://github.com/staxrip/staxrip/blob/master/License.txt)
 [![GitHub all releases](https://img.shields.io/github/downloads/staxrip/staxrip/total?style=plastic&logo=GitHub&logoColor=white&label=Total%20Downloads&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(110%2C%2060%25%2C%2050%25))](https://github.com/staxrip/staxrip/releases/latest)
 [![GitHub Repo stars](https://img.shields.io/github/stars/staxrip/staxrip?style=plastic&logo=GitHub&logoColor=white&label=Stars&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(110%2C%2060%25%2C%2050%25))](https://github.com/staxrip/staxrip)
-[![Discord](https://img.shields.io/discord/850510460256387076?style=plastic&logo=discord&logoColor=white&label=Discord&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(110%2C%2060%25%2C%2050%25))](https://discord.gg/uz8pVR79Bd)  
-[![Static Badge](https://img.shields.io/badge/PayPal-00457C?style=plastic&logo=PayPal&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://paypal.me/DendraspisViridis)
-[![Static Badge](https://img.shields.io/badge/Ko--fi-F16061?style=plastic&logo=Ko-Fi&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://ko-fi.com/dendraspis)
-[![Static Badge](https://img.shields.io/badge/BuyMeACoffee-BuyMeACoffee?style=plastic&logo=BuyMeACoffee&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://www.buymeacoffee.com/dendraspis)
+[![Discord](https://img.shields.io/badge/Discord-Join%20us?style=plastic&logo=discord&logoColor=white&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://discord.gg/uz8pVR79Bd)  
+[![Static Badge](https://img.shields.io/badge/Patreon-F16061?style=plastic&logo=Patreon&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://www.patreon.com/Dendraspis)
+[![Static Badge](https://img.shields.io/badge/Ko--fi-F16061?style=plastic&logo=Ko-Fi&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://ko-fi.com/Dendraspis)
+[![Static Badge](https://img.shields.io/badge/BuyMeACoffee-BuyMeACoffee?style=plastic&logo=BuyMeACoffee&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://www.buymeacoffee.com/Dendraspis)
 
 -------------
 
@@ -34,19 +34,19 @@ There are a lot of resources in StaxRip-related communities. Users are strongly 
 # Contribution / Support
 
 [![GitHub License](https://img.shields.io/github/license/staxrip/staxrip?style=plastic&logo=GitHub&logoColor=white&label=License&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(110%2C%2060%25%2C%2050%25))](https://github.com/staxrip/staxrip/blob/master/License.txt)
-[![Discord](https://img.shields.io/discord/850510460256387076?style=plastic&logo=discord&logoColor=white&label=Discord&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(110%2C%2060%25%2C%2050%25))](https://discord.gg/uz8pVR79Bd)
-[![Static Badge](https://img.shields.io/badge/PayPal-00457C?style=plastic&logo=PayPal&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://paypal.me/DendraspisViridis)
-[![Static Badge](https://img.shields.io/badge/Ko--fi-F16061?style=plastic&logo=Ko-Fi&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://ko-fi.com/dendraspis)
-[![Static Badge](https://img.shields.io/badge/BuyMeACoffee-BuyMeACoffee?style=plastic&logo=BuyMeACoffee&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://www.buymeacoffee.com/dendraspis)
+[![Discord](https://img.shields.io/badge/Discord-Join%20us?style=plastic&logo=discord&logoColor=white&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://discord.gg/uz8pVR79Bd)  
+[![Static Badge](https://img.shields.io/badge/Patreon-F16061?style=plastic&logo=Patreon&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://www.patreon.com/Dendraspis)
+[![Static Badge](https://img.shields.io/badge/Ko--fi-F16061?style=plastic&logo=Ko-Fi&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://ko-fi.com/Dendraspis)
+[![Static Badge](https://img.shields.io/badge/BuyMeACoffee-BuyMeACoffee?style=plastic&logo=BuyMeACoffee&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://www.buymeacoffee.com/Dendraspis)
 
 StaxRip is free to use under MIT license. If you want to contribute, you can report issues, open pull requests for bug fixes and extentions or you can donate.
 
 ### **Donation**
 If you want to donate to support StaxRip and keep it alive, you can do it by using those links:
 
-- [![Static Badge](https://img.shields.io/badge/PayPal-00457C?style=plastic&logo=PayPal&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://paypal.me/DendraspisViridis) https://paypal.me/DendraspisViridis
-- [![Static Badge](https://img.shields.io/badge/Ko--fi-F16061?style=plastic&logo=Ko-Fi&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://ko-fi.com/dendraspis) https://ko-fi.com/dendraspis
-- [![Static Badge](https://img.shields.io/badge/BuyMeACoffee-BuyMeACoffee?style=plastic&logo=BuyMeACoffee&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://www.buymeacoffee.com/dendraspis) https://www.buymeacoffee.com/dendraspis
+- [![Static Badge](https://img.shields.io/badge/Patreon-F16061?style=plastic&logo=Patreon&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://www.patreon.com/Dendraspis) https://www.patreon.com/Dendraspis
+- [![Static Badge](https://img.shields.io/badge/Ko--fi-F16061?style=plastic&logo=Ko-Fi&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://ko-fi.com/dendraspis) https://ko-fi.com/Dendraspis
+- [![Static Badge](https://img.shields.io/badge/BuyMeACoffee-BuyMeACoffee?style=plastic&logo=BuyMeACoffee&labelColor=hsl(210%2C%2060%25%2C%2050%25)&color=hsl(210%2C%2060%25%2C%2050%25))](https://www.buymeacoffee.com/dendraspis) https://www.buymeacoffee.com/Dendraspis
 
 Any contribution is highly appreciated! 
 
@@ -59,7 +59,6 @@ Any contribution is highly appreciated!
 - Feel free to join in the [StaxRip Community on Discord](https://discord.gg/uz8pVR79Bd) , where you can chat and share knowledge with us and other StaxRip users. 
 This is the way to go if you have questions regarding settings, usage, etc.
 - Usage questions can also be asked on the *StaxRip threads* on
-  - [Doom9](https://forum.doom9.org/showthread.php?t=172068)
   - [VideoHelp](https://forum.videohelp.com/threads/369913-StaxRip-support-thread)
 
   although no developer or contributor is active there anymore.
@@ -75,6 +74,23 @@ This is the way to go if you have questions regarding settings, usage, etc.
      Alternatively you can download an old StaxRip release, but then you don't benefit from new functions and bug fixes.
 
 - Some tools and filters might need a specific version of Microsoft Visual C++ Redistributable Runtimes. Due to the frequent changing and replacing of tools and filters, it is impossible to provide precise details about the right dependency. So if you get error messages to due to missing runtime files, we recommend to download and install the [Microsoft Visual C++ Redistributable Runtimes All-in-One](https://www.techpowerup.com/download/visual-c-redistributable-runtime-package-all-in-one/).
+
+# Extraction / Usage
+
+StaxRip is a portable application, so almost everything it needs is already included. 
+This also means, that StaxRip does not have to (and cannot) be installed. 
+You simply extract the [given archive](https://github.com/staxrip/staxrip/releases/latest) and when you start, StaxRip asks you where to store the settings.
+
+It is recommended to choose the first option, which creates a subfolder in the existing startup folder where `StaxRip.exe` is in that you start.
+This ensures, that you start with fresh/new settings as the settings of different versions could be imcompatible with each other,
+which can lead to unwanted side effects like missing functionality or changing encoder parameters. 
+It is also **very important** to **not** run existing jobs on a different StaxRip version as some encoder parameters could have been changed
+and mess up the values. This is pretty rare, but it can happen.
+
+Since `v2.37.0` the versioning has changed a little bit.  
+Releases with the same second number (for example `v2.39.0`, `v2.39.2` and `v2.39.3`) are basically compatible with each other,
+means that you can overwrite the existing files of your old instance and use the same/old settings.
+Whenever this is possible an `UPDATE` archive is also released so you can just download the files that are needed to overwrite.
 
 
 # Screenshots

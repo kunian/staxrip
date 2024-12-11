@@ -456,9 +456,7 @@ Namespace UI
             Return Add(items, path, Nothing)
         End Function
 
-        Shared Function Add(
-            items As ToolStripItemCollection, path As String, action As Action) As MenuItemEx
-
+        Shared Function Add(items As ToolStripItemCollection, path As String, action As Action) As MenuItemEx
             Return Add(items, path, action, Symbol.None, Nothing)
         End Function
 
@@ -491,6 +489,7 @@ Namespace UI
                         If i.Text = a(x) Then
                             found = True
                             l = i.DropDownItems
+                            Exit For
                         End If
                     End If
                 Next
@@ -746,6 +745,11 @@ Namespace UI
             MyBase.New(container)
             ApplyTheme()
             AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        End Sub
+
+        Protected Overrides Sub Dispose(disposing As Boolean)
+            RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+            MyBase.Dispose(disposing)
         End Sub
 
         Sub OnThemeChanged(theme As Theme)

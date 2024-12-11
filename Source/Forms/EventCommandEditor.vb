@@ -5,16 +5,6 @@ Public Class EventCommandEditor
     Inherits DialogBase
 
 #Region " Designer "
-
-    Protected Overloads Overrides Sub Dispose(disposing As Boolean)
-        If disposing Then
-            If Not (components Is Nothing) Then
-                components.Dispose()
-            End If
-        End If
-        MyBase.Dispose(disposing)
-    End Sub
-
     Friend WithEvents tbName As TextBoxEx
     Friend WithEvents cbEvent As ComboBoxEx
     Friend WithEvents TipProvider As TipProvider
@@ -382,7 +372,7 @@ Public Class EventCommandEditor
 
         Dim allCriteria As New List(Of Criteria)
 
-        For Each m In Macro.GetMacros(False, False)
+        For Each m In Macro.GetMacros(False, False, True)
             Dim c = Criteria.Create(m.Type)
             c.Name = m.FriendlyName
             c.Description = m.Description
@@ -395,8 +385,8 @@ Public Class EventCommandEditor
         CriteriaControl.AllCriteria = allCriteria
         CriteriaControl.CriteriaList = EventCommandValue.CriteriaList
 
-        If Not EventCommandValue.CommandParameters Is Nothing Then
-            CommandParameters = DirectCast(ObjectHelp.GetCopy(EventCommandValue.CommandParameters), CommandParameters)
+        If EventCommandValue.CommandParameters IsNot Nothing Then
+            CommandParameters = ObjectHelp.GetCopy(EventCommandValue.CommandParameters)
         End If
 
         SetCommandParameters(CommandParameters)
@@ -417,6 +407,12 @@ Public Class EventCommandEditor
         ApplyTheme()
 
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+    End Sub
+
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
     End Sub
 
     Sub OnThemeChanged(theme As Theme)
@@ -480,8 +476,9 @@ Public Class EventCommandEditor
         Dim params = mi.GetParameters
 
         For i = 0 To params.Length - 1
-            Dim gp As New GridProperty
-            gp.Name = DispNameAttribute.GetValue(params(i).GetCustomAttributes(False))
+            Dim gp As New GridProperty With {
+                .Name = DispNameAttribute.GetValue(params(i).GetCustomAttributes(False))
+            }
 
             If gp.Name Is Nothing Then
                 gp.Name = params(i).Name.ToTitleCase

@@ -10,15 +10,6 @@ Public Class eac3toForm
     Inherits DialogBase
 
 #Region " Designer "
-
-    Protected Overloads Overrides Sub Dispose(disposing As Boolean)
-        If disposing Then
-            If Not (components Is Nothing) Then
-                components.Dispose()
-            End If
-        End If
-        MyBase.Dispose(disposing)
-    End Sub
     Friend WithEvents CommandLink1 As StaxRip.UI.CommandLink
     Friend WithEvents cbVideoOutput As ComboBoxEx
     Friend WithEvents laVideo As LabelEx
@@ -593,7 +584,7 @@ Public Class eac3toForm
     Property Streams As New BindingList(Of M2TSStream)
 
     Private Output As String
-    Private ReadOnly AudioOutputFormats As String() = {"m4a", "ac3", "dts", "flac", "wav", "dtsma", "dtshr", "eac3", "thd", "thd+ac3"}
+    Private ReadOnly AudioOutputFormats As String() = {"m4a", "ac3", "dts", "flac", "wav", "dtsma", "dtshr", "eac3", "thd"}
 
     Private Project As Project
 
@@ -660,6 +651,12 @@ Public Class eac3toForm
         ApplyTheme()
 
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+    End Sub
+
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
     End Sub
 
     Sub OnThemeChanged(theme As Theme)
@@ -876,7 +873,7 @@ Public Class eac3toForm
                             Case "E-AC3", "E-AC3 EX"
                                 ms.OutputType = "eac3"
                             Case "TrueHD/AC3 (Atmos)", "TrueHD/AC3"
-                                ms.OutputType = "thd+ac3"
+                                ms.OutputType = "thd"
                             Case "TrueHD (Atmos)"
                                 ms.OutputType = "thd"
                             Case "DTS-ES", "DTS Express"
@@ -974,7 +971,7 @@ Public Class eac3toForm
         Dim videoStream = TryCast(cbVideoStream.SelectedItem, M2TSStream)
 
         If videoStream IsNot Nothing AndAlso Not cbVideoOutput.Text = "Nothing" Then
-            Dim outFile = OutputFolder + baseName + "." + cbVideoOutput.Text.ToLowerInvariant
+            Dim outFile = Path.Combine(OutputFolder, baseName + "." + cbVideoOutput.Text.ToLowerInvariant)
             If Not outFile.FileExists() Then
                 ret += " " & videoStream.ID & ": " + outFile.Escape
                 outFiles.Add(outFile)
@@ -984,7 +981,7 @@ Public Class eac3toForm
         If p.ExtractHdrmetadata = HdrmetadataMode.DolbyVision OrElse p.ExtractHdrmetadata = HdrmetadataMode.All Then
             Dim el = Streams?.Where(Function(x) x.IsVideoEnhancementLayer)?.FirstOrDefault()
             If el IsNot Nothing Then
-                Dim outFile = OutputFolder + baseName + "_EL.h265"
+                Dim outFile = Path.Combine(OutputFolder, baseName + "_EL.h265")
                 If Not outFile.FileExists() Then
                     ret += " " & el.ID & ": " + outFile.Escape
                     outFiles.Add(outFile)
@@ -994,7 +991,7 @@ Public Class eac3toForm
 
         For Each stream In Streams
             If stream.IsAudio AndAlso stream.Checked Then
-                Dim outFile = OutputFolder + baseName + " ID" & stream.TypeID
+                Dim outFile = Path.Combine(OutputFolder, baseName + " ID" & stream.TypeID)
 
                 If stream.Language.CultureInfo.TwoLetterISOLanguageName <> "iv" Then
                     outFile += " " + stream.Language.CultureInfo.EnglishName
@@ -1012,7 +1009,7 @@ Public Class eac3toForm
 
         For Each stream In Streams
             If stream.IsSubtitle AndAlso stream.Checked Then
-                Dim outFile = OutputFolder + baseName + " ID" & stream.TypeID
+                Dim outFile = Path.Combine(OutputFolder, baseName + " ID" & stream.TypeID)
 
                 If stream.Language.CultureInfo.TwoLetterISOLanguageName <> "iv" Then
                     outFile += " " + stream.Language.CultureInfo.EnglishName
@@ -1024,7 +1021,7 @@ Public Class eac3toForm
             End If
 
             If stream.IsChapters AndAlso cbChapters.Checked Then
-                Dim outFile = OutputFolder + baseName + "_chapters.txt"
+                Dim outFile = Path.Combine(OutputFolder, baseName + "_chapters.txt")
                 outFiles.Add(outFile)
                 ret += " " & stream.ID & ": " + outFile.Escape
             End If

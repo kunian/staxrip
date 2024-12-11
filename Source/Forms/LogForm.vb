@@ -40,11 +40,17 @@ Public Class LogForm
                               End Sub, Keys.Control Or Keys.S).SetImage(Symbol.Save)
         cms.Add("Open in Text Editor", Sub() g.ShellExecute(g.GetTextEditorPath, p.Log.GetPath.Escape), Keys.Control Or Keys.T).SetImage(Symbol.Edit)
         cms.Add("Show in File Explorer", Sub() g.SelectFileWithExplorer(p.Log.GetPath), Keys.Control Or Keys.E).SetImage(Symbol.FileExplorer)
-        cms.Add("Show History", Sub() g.ShellExecute(Folder.Settings + "Log Files"), Keys.Control Or Keys.H).SetImage(Symbol.ClockLegacy)
+        cms.Add("Show History", Sub() g.ShellExecute(Path.Combine(Folder.Settings, "Log Files")), Keys.Control Or Keys.H).SetImage(Symbol.ClockLegacy)
 
         ApplyTheme()
 
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+    End Sub
+
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
     End Sub
 
     Sub OnThemeChanged(theme As Theme)

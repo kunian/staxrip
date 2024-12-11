@@ -94,16 +94,15 @@ Public Class LogBuilder
     Shared EnvironmentString As String 'cached due to bug report
 
     Sub WriteEnvironment()
-        If ToString.Contains("- System Environment -") Then
-            Exit Sub
-        End If
+        If ToString.Contains("- System Environment -") Then Exit Sub
 
         WriteHeader("System Environment")
 
         Dim computerInfo = New ComputerInfo()
 
         If EnvironmentString = "" Then EnvironmentString =
-            "StaxRip:v" + Application.ProductVersion + BR +
+            "StaxRip:" + g.DefaultCommands.GetApplicationDetails(False, True) + BR +
+            $"Settings: v{s.Version.Major}.{s.Version.Minor}.{s.Version.Build}{BR}" +
             "Windows:" + Registry.LocalMachine.GetString("SOFTWARE\Microsoft\Windows NT\CurrentVersion", "ProductName") + " " + Registry.LocalMachine.GetString("SOFTWARE\Microsoft\Windows NT\CurrentVersion", "DisplayVersion") + " " + Registry.LocalMachine.GetString("SOFTWARE\Microsoft\Windows NT\CurrentVersion", "ReleaseId") + " (" + Registry.LocalMachine.GetString("SOFTWARE\Microsoft\Windows NT\CurrentVersion", "BuildLabEx") + ")" + BR +
             "Language:" + CultureInfo.CurrentCulture.EnglishName + BR +
             "CPU:" + Registry.LocalMachine.GetString("HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString") + BR +
@@ -132,7 +131,8 @@ Public Class LogBuilder
             $"Container/Muxer Profile: {p.VideoEncoder.Muxer.Name}{BR}" +
             $"+++++{BR}" +
             $"Process Priority: {s.ProcessPriority}{BR}" +
-            $"Delete Temp Files: {s.DeleteTempFilesMode}{BR}"
+            $"Delete Temp Files: {p.DeleteTempFilesMode}{BR}" + 
+            $"Delete Temp Files Selection: {p.DeleteTempFilesSelectionMode}{BR}"
 
         WriteLine(ConfigurationString.FormatColumn(":"))
     End Sub
@@ -142,15 +142,12 @@ Public Class LogBuilder
     End Sub
 
     Sub WriteStats(start As DateTime)
-        Dim n = DateTime.Now.Subtract(start)
+        Dim dt = DateTime.Now.Subtract(start)
 
-        If Not EndsWith(BR2) Then
-            Append(BR)
-        End If
-
+        If Not EndsWith(BR2) Then Append(BR)
         Append("Start: ".PadRight(10) + start.ToLongTimeString + BR)
         Append("End: ".PadRight(10) + DateTime.Now.ToLongTimeString + BR)
-        Append("Duration: " + CInt(Math.Floor(n.TotalHours)).ToString("d2") + ":" + n.Minutes.ToString("d2") + ":" + n.Seconds.ToString("d2") + BR2)
+        Append("Duration: " + CInt(Math.Floor(dt.TotalHours)).ToString("d2") + ":" + dt.Minutes.ToString("d2") + ":" + dt.Seconds.ToString("d2") + BR2)
     End Sub
 
     Function IsEmpty() As Boolean
@@ -183,11 +180,11 @@ Public Class LogBuilder
         End If
 
         If proj.SourceFile = "" Then
-            Return Folder.Temp + "staxrip.log"
+            Return Path.Combine(Folder.Temp, "staxrip.log")
         ElseIf proj.TempDir = "" Then
-            Return proj.SourceFile.Dir + proj.SourceFile.Base + "_staxrip.log"
+            Return Path.Combine(proj.SourceFile.Dir, proj.SourceFile.FileName + "_staxrip.log")
         Else
-            Return proj.TempDir + proj.TargetFile.Base + "_staxrip.log"
+            Return Path.Combine(proj.TempDir, proj.TargetFile.Base + "_staxrip.log")
         End If
     End Function
 End Class

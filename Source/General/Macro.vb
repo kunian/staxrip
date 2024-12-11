@@ -1,6 +1,7 @@
 ﻿
 Imports System.Globalization
 Imports System.Text.RegularExpressions
+Imports Microsoft.VisualBasic
 Imports StaxRip.UI
 
 <Serializable()>
@@ -87,10 +88,10 @@ Public Class Macro
         End Set
     End Property
 
-    Shared Function GetTips(includeInteractive As Boolean, includeParam As Boolean) As StringPairList
+    Shared Function GetTips(includeInteractive As Boolean, includeParam As Boolean, includeWhileProcessing As Boolean) As StringPairList
         Dim ret As New StringPairList
 
-        For Each macro In GetMacros(includeInteractive, includeParam)
+        For Each macro In GetMacros(includeInteractive, includeParam, includeWhileProcessing)
             ret.Add(macro.Name, macro.Description)
         Next
 
@@ -100,7 +101,7 @@ Public Class Macro
     Shared Function GetTipsFriendly(convertHTMLChars As Boolean) As StringPairList
         Dim ret As New StringPairList
 
-        For Each mac As Macro In GetMacros(False, False)
+        For Each mac As Macro In GetMacros(False, False, True)
             If convertHTMLChars Then
                 ret.Add(HelpDocument.ConvertChars(mac.FriendlyName), mac.Description)
             Else
@@ -119,7 +120,7 @@ Public Class Macro
         Return Name.CompareTo(other.Name)
     End Function
 
-    Shared Function GetMacros(includeInteractive As Boolean, includeParam As Boolean) As List(Of Macro)
+    Shared Function GetMacros(includeInteractive As Boolean, includeParam As Boolean, includeWhileProcessing As Boolean) As List(Of Macro)
         Dim ret As New List(Of Macro)
 
         If includeInteractive Then
@@ -140,6 +141,12 @@ Public Class Macro
             ret.Add(New Macro("media_info_video:property", "MediaInfo Video Property", GetType(String), "Returns a MediaInfo video property for the source file."))
             ret.Add(New Macro("media_info_general:property", "MediaInfo General Property", GetType(String), "Returns a MediaInfo general property for the source file."))
             ret.Add(New Macro("random:digits", "Random Number", GetType(Integer), "Returns a 'digits' long random number, whereas 'digits' is clamped between 1 and 10."))
+        End If
+
+        If includeWhileProcessing Then
+            ret.Add(New Macro("commandline", "Command Line", GetType(String), "Returns the command line used for the running app."))
+            ret.Add(New Macro("progress", "Progress", GetType(Integer), "Returns the current progress as Integer value."))
+            ret.Add(New Macro("progressline", "Progress Line", GetType(String), "Returns the progress line received from the running app."))
         End If
 
         ret.Add(New Macro("audio_bitrate", "Audio Bitrate", GetType(Integer), "Overall audio bitrate."))
@@ -170,6 +177,8 @@ Public Class Macro
         ret.Add(New Macro("encoder_profile", "Encoder Profile", GetType(String), "Name of the selected video encoder profile name."))
         ret.Add(New Macro("encoder_settings", "Encoder Settings", GetType(String), "Settings of the active video encoder."))
         ret.Add(New Macro("muxer_ext", "Muxer Extension", GetType(String), "Output extension of the active muxer."))
+        ret.Add(New Macro("jobs", "Jobs", GetType(String), "Number of all jobs in Jobs List."))
+        ret.Add(New Macro("jobs_active", "Active Jobs", GetType(String), "Number of active jobs in Jobs List."))
         ret.Add(New Macro("player", "Player", GetType(Integer), "Path of the media player."))
         ret.Add(New Macro("plugin_dir", "Plugin Directory", GetType(String), "AviSynth/VapourSynth plugin auto load directory."))
         ret.Add(New Macro("pos_frame", "Position In Frames", GetType(Integer), "Current preview position in frames."))
@@ -334,6 +343,8 @@ Public Class Macro
         If value = "" Then Return ""
         If proj Is Nothing Then Return ""
 
+        Dim matches As MatchCollection = Nothing
+
         If Not value.Contains("%") Then Return value
 
         If value.Contains("%current_date%") Then value = value.Replace("%current_date%", Date.Now.ToString("yyyy-MM-dd"))
@@ -354,13 +365,13 @@ Public Class Macro
         If value.Contains("%temp_dir%") Then value = value.Replace("%temp_dir%", proj.TempDir)
         If Not value.Contains("%") Then Return value
 
-        If value.Contains("%temp_file%") Then value = value.Replace("%temp_file%", proj.TempDir + proj.SourceFile.Base)
+        If value.Contains("%temp_file%") Then value = value.Replace("%temp_file%", Path.Combine(proj.TempDir, proj.SourceFile.Base))
         If Not value.Contains("%") Then Return value
 
-        If value.Contains("%source_temp_file%") Then value = value.Replace("%source_temp_file%", proj.TempDir + g.GetSourceBase)
+        If value.Contains("%source_temp_file%") Then value = value.Replace("%source_temp_file%", Path.Combine(proj.TempDir, g.GetSourceBase))
         If Not value.Contains("%") Then Return value
 
-        If value.Contains("%target_temp_file%") Then value = value.Replace("%target_temp_file%", proj.TempDir + proj.TargetFile.Base)
+        If value.Contains("%target_temp_file%") Then value = value.Replace("%target_temp_file%", Path.Combine(proj.TempDir, proj.TargetFile.Base))
         If Not value.Contains("%") Then Return value
 
         If value.Contains("%source_name%") Then value = value.Replace("%source_name%", proj.SourceFile.Base)
@@ -447,37 +458,59 @@ Public Class Macro
         If value.Contains("%video_bitrate%") Then value = value.Replace("%video_bitrate%", proj.VideoBitrate.ToString)
         If Not value.Contains("%") Then Return value
 
-        If value.Contains("%audio_bitrate%") Then value = value.Replace("%audio_bitrate%", (proj.Audio0.Bitrate + proj.Audio1.Bitrate).ToString)
+        If value.Contains("%audio_bitrate%") Then value = value.Replace("%audio_bitrate%", proj.AudioTracks.Sum(Function(x) x.AudioProfile.Bitrate).ToString)
         If Not value.Contains("%") Then Return value
 
-        If value.Contains("%audio_bitrate1%") Then value = value.Replace("%audio_bitrate1%", proj.Audio0.Bitrate.ToString)
+        matches = Regex.Matches(value, "%audio_bitrate(\d+)?%")
+        For Each match As Match In matches
+            Select Case match.Groups.Count
+                Case 1
+                    value = value.Replace(match.Value, proj.AudioTracks.Sum(Function(x) x.AudioProfile.Bitrate).ToString)
+                Case 2
+                    Dim track = match.Groups(1).Value.ToInt() - 1
+                    If track < proj.AudioTracks.Count Then
+                        value = value.Replace(match.Value, proj.AudioTracks(track).AudioProfile.Bitrate.ToString)
+                    End If
+                Case Else
+                    Throw New NotImplementedException("Macro %audio_bitrate%")
+            End Select
+        Next
         If Not value.Contains("%") Then Return value
 
-        If value.Contains("%audio_bitrate2%") Then value = value.Replace("%audio_bitrate2%", proj.Audio1.Bitrate.ToString)
+        matches = Regex.Matches(value, "%audio_channels(\d+)%")
+        For Each match As Match In matches
+            Dim track = match.Groups(1).Value.ToInt() - 1
+            If track < proj.AudioTracks.Count Then
+                value = value.Replace(match.Value, proj.AudioTracks(track).AudioProfile.Channels.ToString)
+            End If
+        Next
         If Not value.Contains("%") Then Return value
 
-        If value.Contains("%audio_channels1%") Then value = value.Replace("%audio_channels1%", proj.Audio0.Channels.ToString)
+        matches = Regex.Matches(value, "%audio_codec(\d+)%")
+        For Each match As Match In matches
+            Dim track = match.Groups(1).Value.ToInt() - 1
+            If track < proj.AudioTracks.Count Then
+                value = value.Replace(match.Value, proj.AudioTracks(track).AudioProfile.AudioCodec.ToString)
+            End If
+        Next
         If Not value.Contains("%") Then Return value
 
-        If value.Contains("%audio_channels2%") Then value = value.Replace("%audio_channels2%", proj.Audio1.Channels.ToString)
+        matches = Regex.Matches(value, "%audio_delay(\d+)%")
+        For Each match As Match In matches
+            Dim track = match.Groups(1).Value.ToInt() - 1
+            If track < proj.AudioTracks.Count Then
+                value = value.Replace(match.Value, proj.AudioTracks(track).AudioProfile.Delay.ToString)
+            End If
+        Next
         If Not value.Contains("%") Then Return value
 
-        If value.Contains("%audio_codec1%") Then value = value.Replace("%audio_codec1%", proj.Audio0.AudioCodec.ToString)
-        If Not value.Contains("%") Then Return value
-
-        If value.Contains("%audio_codec2%") Then value = value.Replace("%audio_codec2%", proj.Audio1.AudioCodec.ToString)
-        If Not value.Contains("%") Then Return value
-
-        If value.Contains("%audio_delay1%") Then value = value.Replace("%audio_delay1%", proj.Audio0.Delay.ToString)
-        If Not value.Contains("%") Then Return value
-
-        If value.Contains("%audio_delay2%") Then value = value.Replace("%audio_delay2%", proj.Audio1.Delay.ToString)
-        If Not value.Contains("%") Then Return value
-
-        If value.Contains("%audio_file1%") Then value = value.Replace("%audio_file1%", proj.Audio0.File)
-        If Not value.Contains("%") Then Return value
-
-        If value.Contains("%audio_file2%") Then value = value.Replace("%audio_file2%", proj.Audio1.File)
+        matches = Regex.Matches(value, "%audio_file(\d+)%")
+        For Each match As Match In matches
+            Dim track = match.Groups(1).Value.ToInt() - 1
+            If track < proj.AudioTracks.Count Then
+                value = value.Replace(match.Value, proj.AudioTracks(track).AudioProfile.File)
+            End If
+        Next
         If Not value.Contains("%") Then Return value
 
         If value.Contains("%startup_dir%") Then value = value.Replace("%startup_dir%", Folder.Startup)
@@ -519,6 +552,9 @@ Public Class Macro
         If value.Contains("%encoder_ext%") Then value = value.Replace("%encoder_ext%", proj.VideoEncoder.OutputExt)
         If Not value.Contains("%") Then Return value
 
+        If value.Contains("%encoder_codec%") Then value = value.Replace("%encoder_codec%", proj.VideoEncoder.Codec)
+        If Not value.Contains("%") Then Return value
+
         If value.Contains("%muxer_ext%") Then value = value.Replace("%muxer_ext%", proj.VideoEncoder.Muxer.OutputExt)
         If Not value.Contains("%") Then Return value
 
@@ -552,11 +588,23 @@ Public Class Macro
         If value.Contains("%pos_ms%") Then value = value.Replace("%pos_ms%", g.GetPreviewPosMS.ToString)
         If Not value.Contains("%") Then Return value
 
+        If value.Contains("%hdr10plus_path%") Then value = value.Replace("%hdr10plus_path%", p.Hdr10PlusMetadataFile)
+        If Not value.Contains("%") Then Return value
+
+        If value.Contains("%hdrdv_path%") Then value = value.Replace("%hdrdv_path%", p.HdrDolbyVisionMetadataFile?.Path)
+        If Not value.Contains("%") Then Return value
+
         If value.Contains("%source_par_x%") Then
             Dim par = Calc.GetSourcePAR
             value = value.Replace("%source_par_x%", par.X.ToString)
         End If
+        If Not value.Contains("%") Then Return value
 
+        Dim jobs = JobManager.GetJobs()
+        If value.Contains("%jobs%") Then value = value.Replace("%jobs%", jobs?.Count.ToString())
+        If Not value.Contains("%") Then Return value
+
+        If value.Contains("%jobs_active%") Then value = value.Replace("%jobs_active%", jobs?.Where(Function(x) x.Active).Count().ToString())
         If Not value.Contains("%") Then Return value
 
         If value.Contains("%source_par_y%") Then
@@ -727,7 +775,7 @@ Public Class Macro
                 End If
                 Dim random = New Random()
                 Dim randomInt = random.Next(0, Enumerable.Repeat(10, digits).Aggregate(1, Function(a, b) a * b))
-                value = value.Replace(i.Value, randomInt.ToString().PadLeft(digits, "0"C))
+                value = value.Replace(i.Value, randomInt.ToString().PadLeft(digits, "0"c))
 
                 If Not value.Contains("%") Then
                     Return value
@@ -761,7 +809,7 @@ Public Class Macro
 
         If value.Contains("%eval:") Then
             If Not value.Contains("%eval:<expression>%") AndAlso Not value.Contains("%eval:expression%") Then
-                Dim matches = Regex.Matches(value, "%eval:(.+?)%")
+                matches = Regex.Matches(value, "%eval:(.+?)%")
 
                 For Each ma As Match In matches
                     Try
@@ -780,7 +828,7 @@ Public Class Macro
         'Obsolete since 2020
         If value.Contains("%eval_ps:") Then
             If Not value.Contains("%eval_ps:<expression>%") AndAlso Not value.Contains("%eval_ps:expression%") Then
-                Dim matches = Regex.Matches(value, "%eval_ps:(.+?)%")
+                matches = Regex.Matches(value, "%eval_ps:(.+?)%")
 
                 For Each ma As Match In matches
                     Try
@@ -811,6 +859,24 @@ Public Class Macro
                 Exit For
             End If
         Next
+
+        Return value
+    End Function
+
+    Shared Function ExpandWhileProcessing(value As String, proj As Project, commandline As String, progress As Single, progressline As String) As String
+        If value = "" Then Return ""
+        If proj Is Nothing Then Return ""
+
+        value = Expand(value, proj)
+
+        If Not value.Contains("%") Then Return value
+        If value.Contains("%commandline%") Then value = value.Replace("%commandline%", commandline.Trim().Escape())
+
+        If Not value.Contains("%") Then Return value
+        If value.Contains("%progress%") Then value = value.Replace("%progress%", progress.ToInvariantString("0.0"))
+
+        If Not value.Contains("%") Then Return value
+        If value.Contains("%progressline%") Then value = value.Replace("%progressline%", progressline.Trim())
 
         Return value
     End Function

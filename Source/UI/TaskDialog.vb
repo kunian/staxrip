@@ -40,11 +40,14 @@ Public Class TaskDialog(Of T)
 
     Sub Init()
         ShowInTaskbar = False
-        Width = FontHeight * 22
+        Width = FontHeight * 34
 
-        If Content = "" AndAlso Title?.Length > 80 Then
+        Content = If(Content = "", " ", Content)
+        Title = If(Title = "", " ", Title)
+
+        If Content = " " AndAlso Title?.Length > 80 Then
             Content = Title
-            Title = ""
+            Title = " "
         End If
 
         If MenuButton.Items.Count > 0 Then
@@ -60,7 +63,7 @@ Public Class TaskDialog(Of T)
         End If
 
         If Content?.Length > 1000 OrElse ExpandedContent?.Length > 1000 Then
-            Width = FontHeight * 35
+            Width = FontHeight * 45
         End If
 
         ShowIcon = False
@@ -95,6 +98,7 @@ Public Class TaskDialog(Of T)
             ContentLabel.Margin = New Padding(0)
             ContentLabel.BorderStyle = BorderStyle.None
             ContentLabel.Text = Content
+            ContentLabel.Name = "Information"
             paMain.Controls.Add(ContentLabel)
         End If
 
@@ -148,8 +152,22 @@ Public Class TaskDialog(Of T)
         Next
 
         If Timeout > 0 Then
+            Dim originalWindowTitle = Text
+            Dim button = TryCast(AcceptButton, ButtonEx)
+            Dim originalButtonText = button?.Text
+
             g.RunTask(Sub()
-                          Thread.Sleep(Timeout * 1000)
+                          Dim counter = Timeout
+
+                          While counter > 0 AndAlso Not IsDisposingOrDisposed
+                              If button IsNot Nothing Then
+                                  button.Text = $"{originalButtonText} ({counter})"
+                              Else
+                                  Text = $"{originalWindowTitle} ({counter})"
+                              End If
+                              counter -= 1
+                              Thread.Sleep(1000)
+                          End While
 
                           If Not IsDisposingOrDisposed Then
                               Invoke(Sub() Close())

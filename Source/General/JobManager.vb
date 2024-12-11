@@ -26,46 +26,21 @@ Public Class JobManager
         End Get
     End Property
 
-    Shared Function GetJobPath() As String
-        Dim name = p.TargetFile.Base
+    Shared ReadOnly Property JobPath As String
+        Get
+            Dim name = p.TargetFile.Base
 
-        If name = "" Then
-            name = Macro.Expand(p.DefaultTargetName)
-        End If
+            If name = "" Then
+                name = Macro.Expand(p.DefaultTargetName)
+            End If
 
-        If name = "" Then
-            name = p.SourceFile.Base
-        End If
+            If name = "" Then
+                name = p.SourceFile.Base
+            End If
 
-        Return p.TempDir + name + ".srip"
-    End Function
-
-    Shared Sub SaveJobs(jobs As List(Of Job))
-        Dim formatter As New BinaryFormatter
-        Dim counter As Integer
-
-        While True
-            Try
-                Using stream As New FileStream(Folder.Settings + "Jobs.dat",
-                    FileMode.Create, FileAccess.Write, FileShare.None)
-
-                    formatter.Serialize(stream, jobs)
-                End Using
-
-                'otherwise exceptions, better solution not found
-                Thread.Sleep(100)
-
-                Exit While
-            Catch ex As Exception
-                Thread.Sleep(500)
-                counter += 1
-
-                If counter > 9 Then
-                    Throw ex
-                End If
-            End Try
-        End While
-    End Sub
+            Return Path.Combine(p.TempDir, name & ".srip")
+        End Get
+    End Property
 
     Shared Sub RemoveJob(path As String)
         Dim jobs = GetJobs()
@@ -116,12 +91,13 @@ Public Class JobManager
         End If
 
         SaveJobs(jobs)
+        g.RaiseAppEvent(ApplicationEvent.AfterJobAdded)
     End Sub
 
     Shared Function GetJobs() As List(Of Job)
+        Dim counter As Integer = 0
         Dim formatter As New BinaryFormatter
-        Dim jobsPath = Folder.Settings + "Jobs.dat"
-        Dim counter As Integer
+        Dim jobsPath As String = Path.Combine(Folder.Settings, "Jobs.dat")
 
         If File.Exists(jobsPath) Then
             While True
@@ -150,4 +126,38 @@ Public Class JobManager
 
         Return New List(Of Job)
     End Function
+
+    Shared Sub SaveJobs(jobs As List(Of Job))
+        Dim counter As Integer = 0
+        Dim formatter As New BinaryFormatter
+        Dim jobsDir As String = Folder.Settings
+        Dim jobsPath As String = Path.Combine(jobsDir, "Jobs.dat")
+        Dim availableNumberOfBytes As ULong = 0
+        Dim totalNumberOfBytes As ULong = 0
+        Dim totalNumberOfFreeBytes As ULong = 0
+
+        While True
+            Try
+                If Native.GetDiskFreeSpaceEx(jobsDir, availableNumberOfBytes, totalNumberOfBytes, totalNumberOfFreeBytes) Then
+                    If availableNumberOfBytes < 600000 Then Throw New AbortException()
+                End If                
+
+                Using stream As New FileStream(jobsPath, FileMode.Create, FileAccess.Write, FileShare.None)
+                    formatter.Serialize(stream, jobs)
+                End Using
+
+                'otherwise exceptions, better solution not found
+                Thread.Sleep(100)
+
+                Exit While
+            Catch ex As Exception
+                Thread.Sleep(500)
+                counter += 1
+
+                If counter > 9 Then
+                    Throw ex
+                End If
+            End Try
+        End While
+    End Sub
 End Class

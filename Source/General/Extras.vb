@@ -13,17 +13,17 @@ Public Class Animation
         End If
 
         Dim Rate = s.Storage.GetInt("GifFrameRate", 15)
-        Dim cachePath = Folder.Temp + "Palette.png"
+        Dim cachePath = Path.Combine(Folder.Temp, "Palette.png")
         Dim OutPutPath = inputFile.ChangeExt("gif")
-        Dim Seek = s.Storage.GetDouble("GifTime", 15.0)
-        Dim Duration = s.Storage.GetDouble("GifLength", 4.2)
+        Dim Seek = s.Storage.GetDouble("GifTime", 15.0).ToInvariantString()
+        Dim Duration = s.Storage.GetDouble("GifLength", 4.2).ToInvariantString()
         Dim Size = s.Storage.GetInt("GifScale", 480)
         Dim Mode = s.Storage.GetString("PaletteGen", "diff")
         Dim SecondMode = s.Storage.GetString("PaletteUse", "rectangle")
         Dim Dither = s.Storage.GetString("GifDither", "dither=floyd_steinberg")
         Dim DirectoryStatus = s.Storage.GetBool("GifOutput", False)
         Dim DirectoryLocation = s.Storage.GetString("GifDirectory", p.DefaultTargetFolder)
-        Dim Export = DirectoryLocation + "\" + inputFile.Base.ChangeExt("gif")
+        Dim Export = Path.Combine(DirectoryLocation, inputFile.Base.ChangeExt("gif"))
 
         Using Proc As New Proc
             Proc.Header = "Creating Gif"
@@ -89,7 +89,7 @@ Public Class Animation
         Dim Opt = s.Storage.GetBool("OptSetting", False)
         Dim DirectoryStatus = s.Storage.GetBool("PNGOutput", False)
         Dim DirectoryLocation = s.Storage.GetString("PNGDirectory", p.DefaultTargetFolder)
-        Dim Export = DirectoryLocation + "\" + inputFile.Base.ChangeExt("png")
+        Dim Export = IO.Path.Combine(DirectoryLocation, inputFile.Base.ChangeExt("png"))
         Dim NewFile = inputFile.ChangeExt("png")
 
         Using Proc As New Proc

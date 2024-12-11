@@ -24,7 +24,7 @@ Public Class GlobalCommands
                 form.ShowDialog()
             End Using
         Else
-            g.ShellExecute(Folder.Settings + "Log Files")
+            g.ShellExecute(Path.Combine(Folder.Settings, "Log Files"))
         End If
     End Sub
 
@@ -218,13 +218,8 @@ Public Class GlobalCommands
         <DefaultValue(0)>
         bottom As Integer)
 
-        p.CropLeft = Math.Max(left, 0)
-        p.CropTop = Math.Max(top, 0)
-        p.CropRight = Math.Max(right, 0)
-        p.CropBottom = Math.Max(bottom, 0)
-
+        g.SetCrop(left, top, right, bottom, p.ForcedOutputModDirection, False)
         g.MainForm.SetCropFilter()
-        g.CorrectCropMod()
     End Sub
 
     <Command("Generates various wiki content.")>
@@ -261,7 +256,7 @@ Public Class GlobalCommands
 
                 'does help file exist?
                 If pack.Path <> "" AndAlso pack.HelpFilename <> "" Then
-                    If Not File.Exists(pack.Directory + pack.HelpFilename) Then
+                    If Not File.Exists(Path.Combine(pack.Directory, pack.HelpFilename)) Then
                         msg += BR2 + $"# Help file of {pack.Name} don't exist!"
                     End If
                 End If
@@ -269,7 +264,7 @@ Public Class GlobalCommands
         Next
 
         If msg <> "" Then
-            Dim fs = Folder.Temp + "staxrip test.txt"
+            Dim fs = Path.Combine(Folder.Temp, "staxrip test.txt")
             File.WriteAllText(fs, BR + msg.Trim + BR)
             g.ShellExecute(fs)
         Else
@@ -298,7 +293,8 @@ Public Class GlobalCommands
         End Try
     End Sub
 
-    Function GetApplicationDetails(Optional includeName As Boolean = True, Optional includeVersion As Boolean = True, Optional includeReleaseType As Boolean = False) As String
+    <Command("Gets application details.")>
+    Function GetApplicationDetails(Optional includeName As Boolean = True, Optional includeVersion As Boolean = True, Optional includeSettingsVersion As Boolean = True) As String
         Dim sb = New StringBuilder()
         Dim version = Assembly.GetExecutingAssembly.GetName.Version
 
@@ -309,10 +305,11 @@ Public Class GlobalCommands
             If version.Build > 0 Then
                 sb.Append($".{version.Build}")
             End If
-        End If
-        If includeReleaseType Then
-            If version.Build > 0 Then
-                sb.Append(" DEV")
+
+            If includeSettingsVersion Then
+                If version.Minor <> s?.Version.Minor Then
+                    sb.Append($" [v{s.Version.Major}.{s.Version.Minor}.{s.Version.Build}]")
+                End If
             End If
         End If
 
@@ -330,7 +327,7 @@ Public Class GlobalCommands
             Case "info"
                 form.Doc.WriteStart(GetApplicationDetails())
                 form.Doc.Write("Active Authors", "Dendraspis")
-                form.Doc.Write("Active Contributors", "Patman86")
+                form.Doc.Write("Active Contributors", "Patman86, Valdiralita")
                 form.Doc.Write("Retired Authors", "stax76, JKyle, 44vince44, DJATOM, Revan654, NikosD, jernst, Brother John, Freepik, ilko-k, nulledone, vanontom")
                 form.Doc.Writer.WriteRaw("<hr>")
                 form.Doc.Write("Links", "<a href=""https://github.com/staxrip/staxrip"">Source on GitHub</a>" &
@@ -339,7 +336,7 @@ Public Class GlobalCommands
                                          "<br><a href=""https://discord.gg/uz8pVR79Bd"">StaxRip Community on Discord</a>")
                 form.Doc.Writer.WriteRaw("<hr>")
 
-                Dim licensePath = Folder.Startup + "License.txt"
+                Dim licensePath = Path.Combine(Folder.Startup, "License.txt")
 
                 If licensePath.FileExists Then
                     form.Doc.WriteParagraph(licensePath.ReadAllText.Trim, True)
@@ -461,10 +458,13 @@ Public Class GlobalCommands
     End Sub
 
     <Command("Changes video encoder settings.")>
-    Sub ImportVideoEncoderCommandLine(
-        <DispName("Command Line")>
-        commandLine As String)
+    Sub ImportVideoEncoderCommandLine(<DispName("Command Line")> commandLine As String)
+        p.VideoEncoder.ImportCommandLine(commandLine)
+    End Sub
 
+    <Command("Changes video encoder settings from a text file.")>
+    Sub ImportVideoEncoderCommandLineFromTextFile(<DispName("File Path")> filePath As String)
+        Dim commandLine = filePath.ReadAllText()
         p.VideoEncoder.ImportCommandLine(commandLine)
     End Sub
 
@@ -492,9 +492,9 @@ Public Class GlobalCommands
                       <Editor(GetType(MacroStringTypeEditor), GetType(UITypeEditor))>
                       path As String)
 
-        Dim oldEncodeFile = p.TempDir + p.TargetFile.Base + "_out." + p.VideoEncoder.OutputExt
-        p.TargetFile = Macro.Expand(path)
-        Dim newEncodeFile = p.TempDir + p.TargetFile.Base + "_out." + p.VideoEncoder.OutputExt
+        Dim oldEncodeFile = IO.Path.Combine(p.TempDir, p.TargetFile.Base + "_out." + p.VideoEncoder.OutputExt)
+        p.TargetFile = Macro.Expand(path.TrimQuotes())
+        Dim newEncodeFile = IO.Path.Combine(p.TempDir, p.TargetFile.Base + "_out." + p.VideoEncoder.OutputExt)
 
         If File.Exists(oldEncodeFile) Then
             File.Move(oldEncodeFile, newEncodeFile)
@@ -737,7 +737,7 @@ Public Class GlobalCommands
     <Command("Shows a dialog to select files, for those thumbnail sheets are created.")>
     Async Sub ShowThumbnailerDialogAsync()
         Using dialog As New OpenFileDialog()
-            dialog.Title = "Select the video files - for Thumbnailer settings go to Options!"
+            dialog.Title = "Select the video files - for Thumbnailer settings go to Project Options!"
             dialog.SetFilter(FileTypes.Video)
             dialog.Multiselect = True
 

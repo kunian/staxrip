@@ -7,16 +7,6 @@ Public Class MacrosForm
     Inherits DialogBase
 
 #Region " Designer "
-
-    Protected Overloads Overrides Sub Dispose(disposing As Boolean)
-        If disposing Then
-            If Not (components Is Nothing) Then
-                components.Dispose()
-            End If
-        End If
-        MyBase.Dispose(disposing)
-    End Sub
-
     Friend WithEvents lv As ListViewEx
     Friend WithEvents stb As StaxRip.SearchTextBox
     Friend WithEvents lName As LabelEx
@@ -249,6 +239,12 @@ Public Class MacrosForm
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
     End Sub
 
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
+    End Sub
+
     Sub OnThemeChanged(theme As Theme)
         ApplyTheme(theme)
     End Sub
@@ -281,21 +277,22 @@ Public Class MacrosForm
         Next
     End Function
 
-    Sub Populate(Optional sort As Boolean = True)
+    Sub Populate()
         lv.BeginUpdate()
         lv.Items.Clear()
 
         Dim macros As New StringPairList
 
-        For Each mac In Macro.GetMacros(True, True)
+        For Each mac In Macro.GetMacros(True, True, True)
             macros.Add(mac.Name, mac.Description)
         Next
 
         For Each i In macros
             If stb.Text = "" OrElse Match(stb.Text, i.Name, i.Value) Then
-                Dim item As New ListViewItem
-                item.Text = i.Name
-                item.Tag = i.Value
+                Dim item As New ListViewItem With {
+                    .Text = i.Name,
+                    .Tag = i.Value
+                }
                 lv.Items.Add(item)
             End If
         Next
@@ -389,7 +386,7 @@ Public Class MacrosForm
     End Sub
 
     Sub MacrosForm_Load(sender As Object, e As EventArgs) Handles Me.Load
-        Populate(False)
+        Populate()
         lDescriptionTitle.SetFontStyle(FontStyle.Bold)
         lNameTitle.SetFontStyle(FontStyle.Bold)
         lValueTitle.SetFontStyle(FontStyle.Bold)

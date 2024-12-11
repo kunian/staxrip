@@ -112,30 +112,33 @@ Public Class Calc
     End Function
 
     Shared Function GetSizeInBytes() As Long
-        Dim ret = (GetVideoBytes() + GetAudioBytes() + GetSubtitleBytes() + GetOverheadBytes())
+        Dim ret = (GetVideoBytes() + GetVideoMetadataBytes() + GetAudioBytes() + GetSubtitleBytes() + GetOverheadBytes())
 
-        If ret < 1 Then ret = 1
-
-        Return ret
+        Return Math.Max(1, ret)
     End Function
 
     Shared Function GetVideoBitrate() As Double
-        If p.TargetSeconds = 0 Then
-            Return 0
-        End If
+        If p.TargetSeconds = 0 Then Return 0
 
-        Dim bytes = p.TargetSize * PrefixedSize(2).Factor - GetAudioBytes() - GetSubtitleBytes() - GetOverheadBytes()
+        Dim bytes = p.TargetSize * PrefixedSize(2).Factor - GetVideoMetadataBytes() - GetAudioBytes() - GetSubtitleBytes() - GetOverheadBytes()
         Dim ret = bytes * 8 / 1000 / p.TargetSeconds
 
-        If ret < 1 Then
-            ret = 1
-        End If
-
-        Return ret
+        Return Math.Max(1, ret)
     End Function
 
     Shared Function GetVideoBytes() As Long
         Return (p.VideoBitrate \ 8) * 1000L * p.TargetSeconds
+    End Function
+
+    Shared Function GetVideoMetadataBytes() As Long
+        Dim hdr10Plus = p.VideoEncoder?.Hdr10PlusMetadataPath
+        Dim dv = p.VideoEncoder?.DolbyVisionMetadataPath
+        Dim ret = 0L
+
+        ret += hdr10Plus.FileSize()
+        ret += dv.FileSize()
+
+        Return ret
     End Function
 
     Shared Function GetSubtitleBytes() As Long
@@ -144,12 +147,13 @@ Public Class Calc
 
     Shared Function GetOverheadBytes() As Long
         Dim ret As Double
-        Dim frames = p.Script.GetFrameCount
+        Dim frames = p.Script.Info.FrameCount
 
         If {"avi", "divx"}.Contains(p.VideoEncoder.Muxer.OutputExt) Then
             ret += frames * 0.024
-            If p.Audio0.File <> "" Then ret += frames * 0.04
-            If p.Audio1.File <> "" Then ret += frames * 0.04
+            For Each track In p.AudioTracks
+                If track.AudioProfile.File <> "" Then ret += frames * 0.04
+            Next
         ElseIf p.VideoEncoder.Muxer.OutputExt = "mp4" Then
             ret += frames * 0.013
         ElseIf p.VideoEncoder.Muxer.OutputExt = "mkv" Then
@@ -164,15 +168,26 @@ Public Class Calc
     End Function
 
     Shared Function GetAudioBitrate() As Double
-        Dim b0 As Double = GetAudioBitrateFromAudioProfile(p.Audio0)
-        Dim b1 As Double = GetAudioBitrateFromAudioProfile(p.Audio1)
+        Dim ret As Double = 0
 
-        Return b0 + b1 + p.AudioTracks.Sum(Function(arg) arg.Bitrate)
+        For Each tracks In p.AudioTracks
+            ret += GetAudioBitrateFromAudioProfile(tracks.AudioProfile)
+        Next
+
+        ret += p.AudioFiles.Sum(Function(arg) arg.Bitrate)
+
+        Return ret
     End Function
 
     Shared Function GetAudioBitrateFromAudioProfile(profile As AudioProfile) As Double
         Dim ret As Double = 0.0
-        If profile.File <> "" Then ret = If(TypeOf profile Is GUIAudioProfile, DirectCast(profile, GUIAudioProfile).GetBitrate, profile.Bitrate)
+        If profile.File <> "" Then
+            ret = If(TypeOf profile Is GUIAudioProfile, DirectCast(profile, GUIAudioProfile).GetBitrate(), profile.Bitrate)
+        Else
+            If profile.Stream IsNot Nothing Then
+                ret = profile.Bitrate
+            End If
+        End If
         Return ret
     End Function
 
@@ -362,6 +377,10 @@ Public Class Calc
         End Try
     End Function
 
+    Shared Function GetTargetSAR() As Double
+        Return p.TargetWidth / p.TargetHeight
+    End Function
+
     Shared Function GetTargetDAR() As Double
         If p.CustomTargetDAR <> "" Then
             Dim val = ParseCustomAR(p.CustomTargetDAR, 0, 0)
@@ -540,7 +559,7 @@ Public Class Language
 
     Public ReadOnly Property IsDetermined As Boolean
         Get
-            If CultureInfo IsNot Nothing Then Return CultureInfo.TwoLetterISOLanguageName <> "iv"
+            If CultureInfo IsNot Nothing Then Return Not CultureInfo.TwoLetterISOLanguageName.ContainsAny("iv", "und")
             Return ThreeLetterCodeValue <> "und"
         End Get
     End Property
@@ -570,19 +589,19 @@ Public Class Language
                 Return
             End If
 
-            Dim selectedLanguages As IEnumerable(Of String)
+            Dim selectedLanguages As IEnumerable(Of Language)
 
             Select Case lang.Length
                 Case 2
-                    selectedLanguages = Languages.Select(Function(x) x.TwoLetterCode).Union(Languages.Select(Function(x) x.CultureInfo.IetfLanguageTag))
+                    selectedLanguages = Languages.Where(Function(x) x.TwoLetterCode = lang OrElse x.CultureInfo.IetfLanguageTag = lang)
                 Case 3
-                    selectedLanguages = Languages.Select(Function(x) x.ThreeLetterCode)
+                    selectedLanguages = Languages.Where(Function(x) x.ThreeLetterCode = lang)
                 Case Else
-                    selectedLanguages = Languages.Select(Function(x) x.Name)
+                    selectedLanguages = Languages.Where(Function(x) x.Name = lang)
             End Select
 
-            If selectedLanguages.ContainsEx(lang) Then
-                CultureInfoValue = New CultureInfo(lang)
+            If selectedLanguages.Any() Then
+                CultureInfoValue = selectedLanguages.First().CultureInfo
             Else
                 CultureInfoValue = CultureInfo.InvariantCulture
             End If
@@ -871,6 +890,83 @@ Public MustInherit Class Profile
 End Class
 
 <Serializable()>
+Public Class AudioTrack
+    Private _audioProfile As AudioProfile
+    <NonSerialized>
+    Private _editLabel As AudioEditButtonLabel
+    <NonSerialized>
+    Private _languageLabel As AudioLanguageLabel
+    <NonSerialized>
+    Private _nameLabel As AudioNameButtonLabel
+    <NonSerialized>
+    Private _textEdit As AudioTextEdit
+
+    Public Property AudioProfile As AudioProfile
+        Get
+            Return _audioProfile
+        End Get
+        Set
+            _audioProfile = Value
+        End Set
+    End Property
+
+    Public Property EditLabel As AudioEditButtonLabel
+        Get
+            Dim ret = If(_editLabel, New AudioEditButtonLabel())
+            ret.Text = "Edit"
+            Return ret
+        End Get
+        Set
+            _editLabel = Value
+        End Set
+    End Property
+
+    Public Property LanguageLabel As AudioLanguageLabel
+        Get
+            Dim ret = If(_languageLabel, New AudioLanguageLabel())
+            ret.Text = If(_audioProfile IsNot Nothing, _audioProfile.Language.Name, ret.Text)
+            Return ret
+        End Get
+        Set
+            _languageLabel = Value
+        End Set
+    End Property
+
+    Public Property NameLabel As AudioNameButtonLabel
+        Get
+            Dim ret = If(_nameLabel, New AudioNameButtonLabel())
+            ret.Text = If(_audioProfile IsNot Nothing, _audioProfile.Name, ret.Text)
+            Return ret
+        End Get
+        Set
+            _nameLabel = Value
+        End Set
+    End Property
+
+    Public Property TextEdit As AudioTextEdit
+        Get
+            Dim ret = If(_textEdit, New AudioTextEdit())
+            ret.Text = If(ret.Text <> "", ret.Text, _audioProfile.File)
+            Return ret
+        End Get
+        Set
+            _textEdit = Value
+        End Set
+    End Property
+
+    Public Sub New()
+    End Sub
+
+    Public Sub Remove()
+        _audioProfile.Reset()
+
+        _textEdit.Text = ""
+        _textEdit.Refresh()
+    End Sub
+End Class
+
+
+<Serializable()>
 Public Class ObjectStorage
     Private StringDictionary As New Dictionary(Of String, String)
     Private IntDictionary As New Dictionary(Of String, Integer)
@@ -975,8 +1071,7 @@ Public Class EventCommand
 End Class
 
 Public Enum DynamicMenuItemID
-    Audio1Profiles
-    Audio2Profiles
+    AudioProfiles
     EncoderProfiles
     FilterSetupProfiles
     MuxerProfiles
@@ -1381,7 +1476,7 @@ Public Class Subtitle
                 End If
 
                 Dim autoCode = p.PreferredSubtitles.ToLowerInvariant.SplitNoEmptyAndWhiteSpace(",", ";", " ")
-                Dim prefLang = autoCode.ContainsAny("all", st.Language.TwoLetterCode, st.Language.ThreeLetterCode)
+                Dim prefLang = autoCode.ContainsAny("all", st.Language.TwoLetterCode, st.Language.ThreeLetterCode) OrElse p.SubtitleMode = SubtitleMode.All
                 Dim goodMode = p.SubtitleMode <> SubtitleMode.PreferredNoMux AndAlso p.SubtitleMode <> SubtitleMode.Disabled
                 st.Enabled = prefLang AndAlso goodMode
                 st.Path = path
@@ -1398,72 +1493,17 @@ Public Class Subtitle
                 st.StreamOrder = idMatch.Groups(1).Value.ToInt - 1
             End If
 
-            Dim filename = path.FileName.LeftLast(".")
-            Dim extracted = filename.Right("_[").Left("]")
-
-            If Not String.IsNullOrWhiteSpace(extracted) Then
-                For Each lng In Language.Languages.OrderBy(Function(x) x.Name.Length)
-                    If extracted = lng.Name Then
-                        st.Language = lng
-                        Exit For
-                    ElseIf extracted = lng.EnglishName Then
-                        st.Language = lng
-                        Exit For
-                    ElseIf extracted = lng.ThreeLetterCode Then
-                        st.Language = lng
-                        Exit For
-                    ElseIf extracted = lng.TwoLetterCode Then
-                        st.Language = lng
-                        Exit For
-                    End If
-                Next
-            End If
-
-            If st.Language Is Nothing OrElse Not st.Language.IsDetermined Then
-                For Each lng In Language.Languages.OrderByDescending(Function(x) x.Name.Length)
-                    If filename.Contains(lng.TwoLetterCode) Then
-                        st.Language = lng
-                    End If
-
-                    If filename.Contains(lng.ThreeLetterCode) Then
-                        st.Language = lng
-                    End If
-
-                    If path.Contains(lng.EnglishName.Left(" (")) Then
-                        st.Language = lng
-                    End If
-
-                    If path.Contains(lng.EnglishName) Then
-                        st.Language = lng
-
-                        If filename.Contains(lng.EnglishName) Then
-                            st.Language = lng
-                            Exit For
-                        End If
-                    End If
-
-                    If path.Contains(lng.Name) Then
-                        st.Language = lng
-
-                        If filename.Contains(lng.Name) Then
-                            st.Language = lng
-                            Exit For
-                        End If
-                    End If
-                Next
-            End If
-
             Dim trackname = g.ExtractTrackNameFromFilename(path)
             st.Title = If(trackname, st.Title)
-
+            st.Language = g.ExtractLanguageFromPath(path)
             Dim autoCode = p.PreferredSubtitles.ToLowerInvariant.SplitNoEmptyAndWhiteSpace(",", ";", " ")
             Dim prefLang = autoCode.ContainsAny("all", st.Language.TwoLetterCode, st.Language.ThreeLetterCode) OrElse p.SubtitleMode = SubtitleMode.All
             Dim goodMode = p.SubtitleMode <> SubtitleMode.PreferredNoMux AndAlso p.SubtitleMode <> SubtitleMode.Disabled
             st.Enabled = prefLang AndAlso goodMode
             st.Path = path
-            st.Forced = path.ToLowerEx().Contains("forced")
-            st.Commentary = path.ToLowerEx().Contains("commentary")
-            st.Hearingimpaired = path.ToLowerEx().Contains("hearingimpaired")
+            st.Forced = path.Base.ToLowerEx().Contains("forced")
+            st.Commentary = path.Base.ToLowerEx().Contains("commentary")
+            st.Hearingimpaired = path.Base.ToLowerEx().ContainsAny("hearingimpaired", "sdh")
 
             For Each i In autoCode
                 If i.IsInt AndAlso st.Path.Contains("ID" & i.ToInt & " ") Then
@@ -1533,7 +1573,7 @@ Public Class Subtitle
             Dim inSub = subtitles(x)
 
             If Not inSub.Enabled OrElse Not File.Exists(inSub.Path) OrElse inSub.Path.Contains("_cut_") Then Continue For
-            Dim aviPath = p.TempDir + inSub.Path.Base + "_cut_mm.avi"
+            Dim aviPath = IO.Path.Combine(p.TempDir, inSub.Path.Base + "_cut_mm.avi")
             Dim d = (p.CutFrameCount / p.CutFrameRate).ToString("f9", CultureInfo.InvariantCulture)
             Dim r = p.CutFrameRate.ToString("f9", CultureInfo.InvariantCulture)
             Dim args = $"-f lavfi -i color=c=black:s=16x16:d={d}:r={r} -y -hide_banner -c:v ffv1 -g 1 " + aviPath.Escape
@@ -1555,7 +1595,7 @@ Public Class Subtitle
             End If
 
             Dim id = If(FileTypes.SubtitleSingle.Contains(inSub.Path.Ext), 0, inSub.StreamOrder)
-            Dim mkvPath = p.TempDir + inSub.Path.Base + " ID" & id & "_cut_sub.mkv"
+            Dim mkvPath = IO.Path.Combine(p.TempDir, inSub.Path.Base + " ID" & id & "_cut_sub.mkv")
             args = "-o " + mkvPath.Escape + " " + aviPath.Escape
 
             If Not FileTypes.SubtitleExludingContainers.Contains(inSub.Path.Ext) Then
@@ -1583,7 +1623,7 @@ Public Class Subtitle
                 Log.WriteLine(MediaInfo.GetSummary(mkvPath))
             End If
 
-            Dim subPath = p.TempDir + inSub.Path.Base + " ID" & id & "_cut_" + inSub.ExtFull
+            Dim subPath = IO.Path.Combine(p.TempDir, inSub.Path.Base + " ID" & id & "_cut_" + inSub.ExtFull)
             args = "tracks " + mkvPath.Escape + " 1:" + subPath.Escape
 
             Using proc As New Proc
@@ -1651,7 +1691,7 @@ End Enum
 
 Public Class FileTypes
     Shared Property AudioRaw As String() = {"aac", "eac3", "ec3", "thd"}
-    Shared Property Audio As String() = {"flac", "dtshd", "dtsma", "dtshr", "thd", "thd+ac3", "truehd", "aac", "ac3", "dts", "ec3", "eac3", "m4a", "mka", "mp2", "mp3", "mpa", "opus", "wav", "w64"}
+    Shared Property Audio As String() = {"flac", "dtshd", "dtsma", "dtshr", "thd", "thd+ac3", "truehd", "aac", "ac3", "dts", "ec3", "eac3", "m4a", "mka", "mp2", "mp3", "mpa", "ogg", "opus", "wav", "w64"}
     Shared Property AudioHQ As String() = {"dtshr", "dtshd", "dtsma", "thd", "truehd", "ec3", "eac3", "thd+ac3", "flac", "wav", "w64"}
     Shared Property VideoAudio As String() = {"avi", "mp4", "mkv", "divx", "flv", "mov", "mpeg", "mpg", "ts", "m2t", "m2ts", "vob", "webm", "wmv", "pva", "ogg", "ogm", "m4v", "3gp"}
     Shared Property DGDecNVInput As String() = {"264", "h264", "265", "h265", "avc", "hevc", "hvc", "mkv", "mp4", "m4v", "mpg", "vob", "ts", "m2ts", "mts", "m2t", "mpv", "m2v"}
@@ -1660,13 +1700,17 @@ Public Class FileTypes
     Shared Property NicAudioInput As String() = {"wav", "mp2", "mpa", "mp3", "ac3", "dts"}
     Shared Property SubtitleExludingContainers As String() = {"srt", "ass", "idx", "sup", "ttxt", "ssa", "smi"}
     Shared Property SubtitleSingle As String() = {"srt", "ass", "sup", "ttxt", "ssa", "smi"}
-    Shared Property SubtitleIncludingContainers As String() = {"m2ts", "mkv", "mp4", "m4v", "ass", "idx", "smi", "srt", "ssa", "sup", "ttxt"}
+    Shared Property SubtitleIncludingContainers As String() = {"m2ts", "mkv", "mks", "mp4", "m4v", "ass", "idx", "smi", "srt", "ssa", "sup", "ttxt"}
     Shared Property TextSub As String() = {"ass", "idx", "smi", "srt", "ssa", "ttxt", "usf", "ssf", "psb", "sub"}
-    Shared Property VideoComparisonInput As String() = {"264", "265", "avc", "avi", "avs", "d2v", "dgi", "dgim", "divx", "flv", "h264", "h265", "hevc", "hvc", "ivf", "m2t", "m2ts", "m2v", "mkv", "mov", "mp4", "m4v", "mpeg", "mpg", "mpv", "mts", "ogg", "ogm", "pva", "rmvb", "ts", "vdr", "vob", "vpy", "webm", "wmv", "y4m", "3gp"}
-    Shared Property Video As String() = {"264", "265", "avc", "avi", "avs", "d2v", "dgi", "dgim", "divx", "flv", "h264", "h265", "hevc", "hvc", "ivf", "m2t", "m2ts", "m2v", "mkv", "mov", "mp4", "m4v", "mpeg", "mpg", "mpv", "mts", "ogg", "ogm", "pva", "rmvb", "ts", "vdr", "vob", "vpy", "webm", "wmv", "y4m", "3gp"}
+    Shared Property Projects As String() = {"srip"}
+    Shared Property Logs As String() = {"log"}
+    Shared Property Scripts As String() = {"avs", "vpy", "vs"}
+    Shared Property Indexes As String() = {"ffindex", "lwi"}
+    Shared Property VideoComparisonInput As String() = {"264", "265", "avc", "avi", "avs", "d2v", "dgi", "dgim", "divx", "flv", "h264", "h265", "hevc", "hvc", "ivf", "m2ts", "m2t", "m2v", "mkv", "mov", "mp4", "m4v", "mpeg", "mpg", "mpv", "mts", "ogg", "ogm", "pva", "rmvb", "ts", "vdr", "vob", "vpy", "webm", "wmv", "y4m", "3gp"}
+    Shared Property Video As String() = {"264", "265", "3gp", "avc", "avi", "avs", "d2v", "dgi", "dgim", "divx", "flv", "h264", "h265", "hevc", "hvc", "ivf", "m2ts", "m2t", "m2v", "mkv", "mov", "mp4", "m4v", "mpeg", "mpg", "mpv", "mts", "ogg", "ogm", "pva", "rmvb", "ts", "vc1", "vdr", "vob", "vpy", "webm", "wmv", "y4m"}
     Shared Property VideoIndex As String() = {"d2v", "dgi", "dga", "dgim"}
-    Shared Property VideoOnly As String() = {"264", "265", "avc", "gif", "h264", "h265", "hevc", "hvc", "ivf", "m2v", "mpv", "apng", "png", "y4m"}
-    Shared Property VideoRaw As String() = {"264", "265", "h264", "h265", "avc", "hevc", "hvc", "ivf"}
+    Shared Property VideoOnly As String() = {"264", "265", "avc", "gif", "h264", "h265", "hevc", "hvc", "ivf", "m2v", "mpv", "apng", "png", "vc1", "y4m"}
+    Shared Property VideoRaw As String() = {"264", "265", "h264", "h265", "avc", "hevc", "hvc", "ivf", "vc1"}
     Shared Property VideoText As String() = {"d2v", "dgi", "dga", "dgim", "avs", "vpy"}
     Shared Property VideoDemuxOutput As String() = {"avi", "mpg", "h264", "h265", "hevc"}
     Shared Property Image As String() = {"bmp", "jpg", "png", "gif", "tif", "jpe", "jpeg", "psd"}
@@ -1746,10 +1790,8 @@ Public Class BitmapUtil
         Return Color.FromArgb(Data(pos), Data(pos + 1), Data(pos + 2))
     End Function
 
-    Function GetMax(x As Integer, y As Integer) As Integer
-        Dim col = GetPixel(x, y)
-        Dim max = Math.Max(col.R, col.G)
-        Return Math.Max(max, col.B)
+    Function GetMaxLuminance(x As Integer, y As Integer) As Single
+        Return GetPixel(x, y).ToColorHSL().L
     End Function
 
     Shared Function Create(bmp As Bitmap) As BitmapUtil
@@ -1781,10 +1823,9 @@ Public Class AutoCrop
     Public Left As Integer()
     Public Right As Integer()
 
-    Shared Function Start(bmp As Bitmap, position As Integer) As AutoCrop
+    Shared Function Start(bmp As Bitmap, position As Integer, threshold As Single) As AutoCrop
         Dim ret As New AutoCrop
         Dim u = BitmapUtil.Create(bmp)
-        Dim max = 20
         Dim xCount = 20
         Dim yCount = 20
 
@@ -1799,7 +1840,7 @@ Public Class AutoCrop
 
         For xValue = 0 To xValues.Length - 1
             For y = 0 To u.BitmapData.Height \ 4
-                If u.GetMax(xValues(xValue), y) < max Then
+                If u.GetMaxLuminance(xValues(xValue), y) < threshold Then
                     ret.Top(xValue) = y + 1
                 Else
                     Exit For
@@ -1807,7 +1848,7 @@ Public Class AutoCrop
             Next
 
             For y = u.BitmapData.Height - 1 To u.BitmapData.Height - u.BitmapData.Height \ 4 Step -1
-                If u.GetMax(xValues(xValue), y) < max Then
+                If u.GetMaxLuminance(xValues(xValue), y) < threshold Then
                     ret.Bottom(xValue) = u.BitmapData.Height - y
                 Else
                     Exit For
@@ -1826,7 +1867,7 @@ Public Class AutoCrop
 
         For yValue = 0 To yValues.Length - 1
             For x = 0 To u.BitmapData.Width \ 4
-                If u.GetMax(x, yValues(yValue)) < max Then
+                If u.GetMaxLuminance(x, yValues(yValue)) < threshold Then
                     ret.Left(yValue) = x + 1
                 Else
                     Exit For
@@ -1834,7 +1875,7 @@ Public Class AutoCrop
             Next
 
             For x = u.BitmapData.Width - 1 To u.BitmapData.Width - u.BitmapData.Width \ 4 Step -1
-                If u.GetMax(x, yValues(yValue)) < max Then
+                If u.GetMaxLuminance(x, yValues(yValue)) < threshold Then
                     ret.Right(yValue) = u.BitmapData.Width - x
                 Else
                     Exit For
@@ -1852,6 +1893,11 @@ Public Enum MsgIcon
     [Error] = MessageBoxIcon.Error
     Warning = MessageBoxIcon.Warning
     Question = MessageBoxIcon.Question
+End Enum
+
+Public Enum ForceOutputModDirection
+    Decrease
+    Increase
 End Enum
 
 Public Enum HdrmetadataMode
@@ -1877,177 +1923,22 @@ Public Enum AutoCropMode
     <DispName("Always")> Always = 2
 End Enum
 
-<Serializable>
-Public Class DolbyVisionMetadataFile
-    Public Property Crop As Padding = New Padding(0)
-    Public ReadOnly Property Path As String = Nothing
+Public Enum AutoCropFrameRangeMode
+    <DispName("Automatic")> Automatic = 0
+    <DispName("Complete")> Complete = 1
+    <DispName("Manual Threshold")> ManualThreshold = 2
+End Enum
 
-    Public ReadOnly Property Level5JsonFilePath As String
-        Get
-            Return If(String.IsNullOrWhiteSpace(Path), "", $"{Path.DirAndBase()}_L5.json")
-        End Get
-    End Property
+Public Enum AutoCropFrameSelectionMode
+    <DispName("Fixed Frame Number")> FixedFrames = 1
+    <DispName("Frame Interval")> FrameInterval = 2
+    <DispName("Time Interval")> TimeInterval = 3
+End Enum
 
-    Public ReadOnly Property EditorConfigFilePath As String
-        Get
-            Return If(String.IsNullOrWhiteSpace(Path), "", $"{Path.DirAndBase()}_Config.json")
-        End Get
-    End Property
-
-    Public ReadOnly Property CroppedRpuFilePath As String
-        Get
-            Return If(String.IsNullOrWhiteSpace(Path), "", $"{Path.DirAndBase()}_Cropped.rpu")
-        End Get
-    End Property
-
-
-    Private Sub New()
-    End Sub
-
-    Public Sub New(filePath As String)
-        Me.Path = filePath
-
-        WriteLevel5Export(False)
-        ReadLevel5Export()
-    End Sub
-
-    Public Sub New(filePath As String, crop As Padding)
-        Me.Path = filePath
-        Me.Crop = crop
-    End Sub
-
-    Public Sub ReadLevel5Export()
-        If Not Path?.FileExists() Then Return
-        If Not Level5JsonFilePath.FileExists() Then Return
-
-        Try
-            Dim jsonContent = Level5JsonFilePath.ReadAllText()
-            Dim strippedJsonContent = jsonContent.Right("presets").Left("edits")
-            strippedJsonContent = Regex.Replace(strippedJsonContent, "\s", "")
-            Dim presetMatches = Regex.Matches(strippedJsonContent, "\{.+?:(?<id>\d+),.+?:(?<left>\d+),.+?:(?<right>\d+),.+?:(?<top>\d+),.+?:(?<bottom>\d+)\}")
-
-            If presetMatches.Count = 0 Then Return
-
-            Dim newCrop As New Padding(Integer.MaxValue)
-
-            For Each match As Match In presetMatches
-                newCrop.Left = Math.Min(newCrop.Left, match.Groups("left").Value.ToInt())
-                newCrop.Top = Math.Min(newCrop.Top, match.Groups("top").Value.ToInt())
-                newCrop.Right = Math.Min(newCrop.Right, match.Groups("right").Value.ToInt())
-                newCrop.Bottom = Math.Min(newCrop.Bottom, match.Groups("bottom").Value.ToInt())
-            Next
-
-            Me.Crop = newCrop
-        Catch ex As AbortException
-            Throw ex
-        Catch ex As Exception
-            g.ShowException(ex)
-            Throw New AbortException
-        End Try
-    End Sub
-
-    Public Sub WriteLevel5Export(Optional overwrite As Boolean = False)
-        If Not Path?.FileExists() Then Return
-        If Not overwrite AndAlso Level5JsonFilePath.FileExists() Then Return
-
-        Try
-            Dim arguments = $"export --data ""level5={Level5JsonFilePath}"" -i ""{Path}"""
-            Using proc As New Proc
-                proc.Package = Package.DoViTool
-                proc.Project = p
-                proc.Header = "Extract Level5 data from RPU metadata file"
-                proc.Encoding = Encoding.UTF8
-                proc.Arguments = arguments
-                proc.AllowedExitCodes = {0}
-                proc.OutputFiles = {Level5JsonFilePath}
-                proc.Start()
-            End Using
-        Catch ex As AbortException
-            Throw ex
-        Catch ex As Exception
-            g.ShowException(ex)
-            Throw New AbortException
-        End Try
-
-        ReadLevel5Export()
-    End Sub
-
-    Public Sub WriteEditorConfigFile(offset As Padding, Optional overwrite As Boolean = True)
-        If Not Level5JsonFilePath?.FileExists() Then Return
-        If Not overwrite AndAlso EditorConfigFilePath.FileExists() Then Return
-        If offset = Padding.Empty Then Return
-        If offset.Left < 0 OrElse offset.Top < 0 OrElse offset.Right < 0 OrElse offset.Bottom < 0 Then Throw New ArgumentOutOfRangeException(NameOf(offset))
-
-        Try
-            Dim jsonContent = Level5JsonFilePath.ReadAllText()
-            jsonContent = Regex.Replace(jsonContent, "\s", "")
-            Dim presetMatches = Regex.Matches(jsonContent.Left("""edits"":{"), "\{.+?:(?<id>\d+),.+?:(?<left>\d+),.+?:(?<right>\d+),.+?:(?<top>\d+),.+?:(?<bottom>\d+)\}")
-            Dim edits = jsonContent.Right("""edits"":{").Left("}")
-
-            If presetMatches.Count = 0 Then Return
-            If String.IsNullOrWhiteSpace(edits) Then Return
-
-            Dim presets = ""
-            For Each match As Match In presetMatches
-                Dim left = match.Groups("left").Value.ToInt() - offset.Left
-                Dim top = match.Groups("top").Value.ToInt() - offset.Top
-                Dim right = match.Groups("right").Value.ToInt() - offset.Right
-                Dim bottom = match.Groups("bottom").Value.ToInt() - offset.Bottom
-
-                If left < 0 Then Throw New ArgumentOutOfRangeException(NameOf(left), "Negative values are not valid offsets for RPU files")
-                If top < 0 Then Throw New ArgumentOutOfRangeException(NameOf(top), "Negative values are not valid offsets for RPU files")
-                If right < 0 Then Throw New ArgumentOutOfRangeException(NameOf(right), "Negative values are not valid offsets for RPU files")
-                If bottom < 0 Then Throw New ArgumentOutOfRangeException(NameOf(bottom), "Negative values are not valid offsets for RPU files")
-
-                presets += $"{{"
-                presets += $"""id"":{match.Groups("id").Value},"
-                presets += $"""left"":{left},"
-                presets += $"""right"":{right},"
-                presets += $"""top"":{top},"
-                presets += $"""bottom"":{bottom}"
-                presets += $"}},"
-            Next
-            presets = presets.TrimEnd(","c)
-            presets = $"""presets"":[{presets}]"
-            edits = $"""edits"":{{{edits}}}"
-            Dim result = $"{{""active_area"":{{{presets},{edits}}}}}"
-
-            result.WriteFileUTF8(EditorConfigFilePath)
-        Catch ex As AbortException
-            Throw ex
-        Catch ex As Exception
-            g.ShowException(ex)
-            Throw New AbortException
-        End Try
-    End Sub
-
-    Public Function WriteCroppedRpu(Optional overwrite As Boolean = True) As String
-        If Not Path?.FileExists() Then Return Nothing
-        If Not EditorConfigFilePath?.FileExists() Then Return Nothing
-        If Not overwrite AndAlso CroppedRpuFilePath.FileExists() Then Return Nothing
-
-        Try
-        Dim arguments = $"editor -i ""{Path}"" -j ""{EditorConfigFilePath}"" -o ""{CroppedRpuFilePath}"""
-        Using proc As New Proc
-            proc.Package = Package.DoViTool
-            proc.Project = p
-            proc.Header = "Creating new RPU metadata file"
-            proc.Encoding = Encoding.UTF8
-            proc.Arguments = arguments
-            proc.AllowedExitCodes = {0}
-            proc.OutputFiles = {CroppedRpuFilePath}
-            proc.Start()
-        End Using
-        Catch ex As AbortException
-            Throw ex
-        Catch ex As Exception
-            g.ShowException(ex)
-            Throw New AbortException
-        End Try
-
-        Return CroppedRpuFilePath
-    End Function
-End Class
+Public Enum AutoCropDolbyVisionMode
+    <DispName("Automatic")> Automatic = 0
+    <DispName("Manual Threshold")> ManualThreshold = 1
+End Enum
 
 Public Enum TimestampsMode
     Never
@@ -4194,6 +4085,30 @@ Public Enum FileExistMode
     Skip
 End Enum
 
+Public Enum SelectionMode
+    Include
+    Exclude
+End Enum
+
+<Flags>
+Public Enum DeleteSelection
+    Everything = 1
+    Selective = 2
+    Custom = 4
+End Enum
+
+<Flags>
+Public Enum DeleteSelectiveSelection
+    None = 0
+    Projects = 1
+    Logs = 1 << 1
+    Scripts = 1 << 2
+    Indexes = 1 << 3
+    Videos = 1 << 4
+    Audios = 1 << 5
+    Subtitles = 1 << 6
+End Enum
+
 Public Enum DeleteMode
     Disabled
     <DispName("Recycle Bin")> RecycleBin
@@ -4212,18 +4127,27 @@ Public Enum CompressionMode
     none
 End Enum
 
+Public Enum ImageFrameNumberPosition
+    Prefix
+    Suffix
+End Enum
+
 Public Enum ApplicationEvent
+    <DispName("After Job Added")> AfterJobAdded
     <DispName("After Job Failed")> AfterJobFailed
     <DispName("After Job Muxed")> AfterJobMuxed
     <DispName("After Job Processed")> AfterJobProcessed
     <DispName("After Jobs Processed")> AfterJobsProcessed
     <DispName("After Project Loaded")> AfterProjectLoaded
     <DispName("After Project Or Source Loaded")> AfterProjectOrSourceLoaded
+    <DispName("After Source Opened")> AfterSourceOpened
     <DispName("After Source Loaded")> AfterSourceLoaded
     <DispName("After Video Encoded")> AfterVideoEncoded
     <DispName("Application Exit")> ApplicationExit
+    <DispName("Before Job Adding")> BeforeJobAdding
     <DispName("Before Job Processed")> BeforeJobProcessed
     <DispName("Before Processing")> BeforeProcessing
+    <DispName("While Processing")> WhileProcessing
 End Enum
 
 Public Enum CommandLinePreview

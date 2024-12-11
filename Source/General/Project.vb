@@ -2,6 +2,7 @@
 Imports System.ComponentModel
 Imports System.Globalization
 Imports System.Runtime.CompilerServices
+Imports StaxRip.UI
 
 <Serializable()>
 Public Class Project
@@ -15,12 +16,23 @@ Public Class Project
     Public AbortOnFrameMismatch As Boolean = True
     Public AddAttachmentsToMuxer As Boolean = True
     Public AdjustHeight As Boolean = True
-    Public Audio0 As AudioProfile
-    Public Audio1 As AudioProfile
-    Public AudioTracks As List(Of AudioProfile)
+    Public AudioFiles As New List(Of AudioProfile)
+    Public AudioTracks As New List(Of AudioTrack)
+    Public AudioTracksAvailable As Integer = 6
     Public AutoCompCheck As Boolean
     Public AutoCorrectCropValues As Boolean = True
-    Public AutoCropMode As AutoCropMode = AutoCropMode.DolbyVisionOnly
+    Public AutoCropDolbyVisionThresholdBegin As Integer = 0
+    Public AutoCropDolbyVisionThresholdEnd As Integer = 0
+    Public AutoCropDolbyVisionMode As AutoCropDolbyVisionMode = AutoCropDolbyVisionMode.Automatic
+    Public AutoCropMode As AutoCropMode = AutoCropMode.Always
+    Public AutoCropFrameRangeMode As AutoCropFrameRangeMode = AutoCropFrameRangeMode.Automatic
+    Public AutoCropFrameRangeThresholdBegin As Integer = 0
+    Public AutoCropFrameRangeThresholdEnd As Integer = 0
+    Public AutoCropFrameSelectionMode As AutoCropFrameSelectionMode = AutoCropFrameSelectionMode.TimeInterval
+    Public AutoCropFixedFramesFrameSelection As Integer = 200
+    Public AutoCropFrameIntervalFrameSelection As Integer = 400
+    Public AutoCropTimeIntervalFrameSelection As Integer = 15
+    Public AutoCropLuminanceThreshold As Single = 10.0
     Public AutoResizeImage As Integer
     Public AutoRotation As Boolean = True
     Public AutoSmartCrop As Boolean
@@ -47,6 +59,13 @@ Public Class Project
     Public DefaultSubtitle As DefaultSubtitleMode = DefaultSubtitleMode.Default
     Public DefaultTargetFolder As String = ""
     Public DefaultTargetName As String = ""
+    Public DeleteTempFilesMode As DeleteMode = DeleteMode.Disabled
+    Public DeleteTempFilesSelection As DeleteSelection = DeleteSelection.Everything
+    Public DeleteTempFilesSelectionMode As SelectionMode = SelectionMode.Include
+    Public DeleteTempFilesCustomSelection As String() = FileTypes.Video.Distinct().Sort().ToArray()
+    Public DeleteTempFilesSelectiveSelection As DeleteSelectiveSelection = DeleteSelectiveSelection.Videos
+    Public DeleteTempFilesOnFrameMismatchNegative As Integer = 0
+    Public DeleteTempFilesOnFrameMismatchPositive As Integer = 1
     Public DemuxAttachments As Boolean = True
     Public DemuxAudio As DemuxMode = DemuxMode.All
     Public DemuxChapters As Boolean = True
@@ -57,7 +76,9 @@ Public Class Project
     Public FileExistAudio As FileExistMode
     Public FileExistVideo As FileExistMode
     Public FirstOriginalSourceFile As String
-    Public ForcedOutputMod As Integer = 4
+    Public ForcedOutputMod As Integer = 2
+    Public ForcedOutputModDirection As ForceOutputModDirection = ForceOutputModDirection.Increase
+    Public ForcedOutputModIgnorable As Boolean = False
     Public ForcedOutputModOnlyIfCropped As Boolean = False
     Public HardcodedSubtitle As Boolean
     Public Hdr10PlusMetadataFile As String
@@ -79,7 +100,6 @@ Public Class Project
     Public RemindToCut As Boolean = False
     Public RemindToDoCompCheck As Boolean = False
     Public RemindToSetFilters As Boolean = False
-    Public ResizeSliderMaxWidth As Integer
     Public Script As TargetVideoScript
     Public SkipAudioEncoding As Boolean
     Public SkippedAssistantTips As List(Of String)
@@ -159,23 +179,31 @@ Public Class Project
         If SourceScript Is Nothing Then SourceScript = New SourceVideoScript
         If SkippedAssistantTips Is Nothing Then SkippedAssistantTips = New List(Of String)
         If SourceFiles Is Nothing Then SourceFiles = New List(Of String)
-        If AudioTracks Is Nothing Then AudioTracks = New List(Of AudioProfile)
+        If AudioFiles Is Nothing Then AudioFiles = New List(Of AudioProfile)
+        If AudioTracks Is Nothing Then AudioTracks = New List(Of AudioTrack)
 
         If Check(VideoEncoder, "Video Encoder", 80) Then
             VideoEncoder = New x265Enc
         End If
 
-        If Check(Audio0, "Audio Track 1", 37) Then
-            Audio0 = New MuxAudioProfile With {
-                .Language = New Language(CultureInfo.CurrentCulture.TwoLetterISOLanguageName, True)
-            }
-        End If
-
-        If Check(Audio1, "Audio Track 2", 37) Then
-            Audio1 = New MuxAudioProfile With {
-                .Language = New Language("en", True)
-            }
-        End If
+        'If Check(AudioTracks, "Audio Tracks", 1) Then
+        '    AudioTracks.Add(New AudioTrack() With {
+        '                        .AudioProfile = New MuxAudioProfile With {
+        '                                            .Language = New Language(CultureInfo.CurrentCulture.TwoLetterISOLanguageName, True)
+        '                                        },
+        '                        .EditLabel = New AudioEditButtonLabel(0),
+        '                        .NameLabel = New AudioNameButtonLabel(0),
+        '                        .TextEdit = New AudioTextEdit(0)
+        '                    })
+        '    AudioTracks.Add(New AudioTrack() With {
+        '                        .AudioProfile = New MuxAudioProfile With {
+        '                                            .Language = New Language("en", True)
+        '                                        },
+        '                        .EditLabel = New AudioEditButtonLabel(1),
+        '                        .NameLabel = New AudioNameButtonLabel(1),
+        '                        .TextEdit = New AudioTextEdit(1)
+        '                    })
+        'End If
 
         If Check(Script, "Filter Setup", 50) Then Script = VideoScript.GetDefaults()(0)
 
@@ -183,11 +211,12 @@ Public Class Project
     End Sub
 
     Sub Migrate()
-        Audio0.Migrate()
-        Audio1.Migrate()
+        For Each track In AudioTracks
+            track.AudioProfile.Migrate()
+        Next
 
-        For Each i In AudioTracks
-            i.Migrate()
+        For Each ap In AudioFiles
+            ap.Migrate()
         Next
     End Sub
 
@@ -249,7 +278,7 @@ Public Class Project
         End Get
         Set(value As String)
             If value <> TargetFileValue Then
-                If value <> "" AndAlso Not value.FileName.IsValidFileName Then
+                If value <> "" AndAlso (value.ContainsAny(Path.GetInvalidPathChars()) OrElse Not value.FileName.IsValidFileName()) Then
                     MsgWarn("Filename contains invalid characters.")
                     Exit Property
                 End If

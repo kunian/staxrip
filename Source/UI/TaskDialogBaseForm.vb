@@ -15,6 +15,12 @@ Public Class TaskDialogBaseForm
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
     End Sub
 
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
+    End Sub
+
     Sub OnThemeChanged(theme As Theme)
         ApplyTheme(theme)
     End Sub
@@ -87,7 +93,9 @@ Public Class TaskDialogBaseForm
                     c.Width = ClientSize.Width - CInt(fh * 0.7 * 2)
 
                     If TypeOf c Is LabelEx Then
-                        If c.Name = "ExpandedInformation" AndAlso Form.blDetails.Text = "Show Details" Then
+                        Dim isExtended = Form.blDetails.Text = "Hide Details"
+
+                        If c.Name = "Information" AndAlso isExtended OrElse c.Name = "ExpandedInformation" AndAlso Not isExtended Then
                             c.Visible = False
                             c.Height = 0
                         Else
@@ -244,14 +252,14 @@ Public Class TaskDialogBaseForm
             Dim r = New Rectangle(x, y, w, h)
 
             If Title <> "" AndAlso Description <> "" Then
-                TextRenderer.DrawText(g, Title, TitleFont, r, ForeColor, TextFormatFlags.Left Or TextFormatFlags.WordBreak)
-                y = CInt(titleFontHeight * 0.2) + GetTitleSize().Height
+                TextRenderer.DrawText(g, Title, TitleFont, r, ForeColor, TextFormatFlags.Left Or TextFormatFlags.WordBreak Or TextFormatFlags.TextBoxControl)
+                y = CInt(titleFontHeight * 0.2) + GetTitleSize().Height - 2
                 r = New Rectangle(x, y, w, h)
-                TextRenderer.DrawText(g, Description, Font, r, ForeColor, TextFormatFlags.Left Or TextFormatFlags.WordBreak)
+                TextRenderer.DrawText(g, Description, Font, r, ForeColor, TextFormatFlags.Left Or TextFormatFlags.WordBreak Or TextFormatFlags.TextBoxControl)
             ElseIf Title <> "" Then
-                TextRenderer.DrawText(g, Title, TitleFont, r, ForeColor, TextFormatFlags.Left Or TextFormatFlags.WordBreak)
+                TextRenderer.DrawText(g, Title, TitleFont, r, ForeColor, TextFormatFlags.Left Or TextFormatFlags.WordBreak Or TextFormatFlags.TextBoxControl)
             ElseIf Description <> "" Then
-                TextRenderer.DrawText(g, Description, Font, r, ForeColor, TextFormatFlags.Left Or TextFormatFlags.WordBreak)
+                TextRenderer.DrawText(g, Description, Font, r, ForeColor, TextFormatFlags.Left Or TextFormatFlags.WordBreak Or TextFormatFlags.TextBoxControl)
             End If
         End Sub
 

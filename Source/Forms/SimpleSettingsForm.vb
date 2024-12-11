@@ -49,7 +49,7 @@ Public Class SimpleSettingsForm
             Or System.Windows.Forms.AnchorStyles.Left) _
             Or System.Windows.Forms.AnchorStyles.Right), System.Windows.Forms.AnchorStyles)
         Me.SimpleUI.Location = New System.Drawing.Point(15, 15)
-        Me.SimpleUI.Margin = New System.Windows.Forms.Padding(15, 15, 15, 0)
+        Me.SimpleUI.Margin = New System.Windows.Forms.Padding(15, 5, 15, 0)
         Me.SimpleUI.Name = "SimpleUI"
         Me.SimpleUI.Size = New System.Drawing.Size(1161, 667)
         Me.SimpleUI.TabIndex = 2
@@ -118,13 +118,19 @@ Public Class SimpleSettingsForm
 
     Sub New(title As String, ParamArray helpParagraphs As String())
         InitializeComponent()
-        ScaleClientSize(40, 27)
+        ScaleClientSize(40, 28)
         Text = $"{title} - {g.DefaultCommands.GetApplicationDetails()}"
         Me.HelpParagraphs = helpParagraphs
         SimpleUI.Tree.Select()
         ApplyTheme()
 
         AddHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+    End Sub
+
+    Protected Overrides Sub Dispose(disposing As Boolean)
+        RemoveHandler ThemeManager.CurrentThemeChanged, AddressOf OnThemeChanged
+        components?.Dispose()
+        MyBase.Dispose(disposing)
     End Sub
 
     Sub OnThemeChanged(theme As Theme)
@@ -136,11 +142,14 @@ Public Class SimpleSettingsForm
     End Sub
 
     Sub ApplyTheme(theme As Theme)
-        If DesignHelp.IsDesignMode Then
-            Exit Sub
-        End If
+        If DesignHelp.IsDesignMode Then Exit Sub
 
         BackColor = theme.General.BackColor
+    End Sub
+
+    Protected Overrides Sub OnResize(e As EventArgs)
+        MyBase.OnResize(e)
+        'Text = $"{Size.Width}x{Size.Height}"
     End Sub
 
     Sub SimpleSettingsForm_HelpRequested(sender As Object, e As HelpEventArgs) Handles Me.HelpRequested
@@ -159,4 +168,5 @@ Public Class SimpleSettingsForm
 
         form.Show()
     End Sub
+
 End Class

@@ -2,6 +2,12 @@
 [Source]
 Automatic = # can be configured at: Tools > Settings > Source Filters
 AVISource = clip = core.avisource.AVISource(r"%source_file%")
+
+BestSource = clip = core.bs.VideoSource(r"%source_file%", cachemode=0)
+    tcFile = r"%temp_file%_timestamps.txt" # timestamps file path
+    # hwdevice: The interface to use for hardware decoding. Depends on OS and hardware. On windows d3d11va, cuda and vulkan (H264, HEVC and AV1) are probably the ones most likely to work. Defaults to CPU decoding. Will throw errors for formats where hardware decoding isn't possible.
+    clip = core.bs.VideoSource(r"%source_file%", track=-1, fpsnum=-1, fpsden=1, rff=False, threads=0, seekpreroll=20, enable_drefs=False, use_absolute_path=False, cachemode=1, cachepath=r"%source_temp_file%.ffindex", cachesize=1000, hwdevice="", extrahwframes=9, timecodes=tcFile) if os.path.exists(tcFile) else core.bs.VideoSource(r"%source_file%", track=-1, fpsnum=-1, fpsden=1, rff=False, threads=0, seekpreroll=20, enable_drefs=False, use_absolute_path=False, cachemode=1, cachepath="", cachesize=1000, hwdevice="", extrahwframes=9)
+
 d2vsource = clip = core.d2v.Source(r"%source_file%")
 
 ffms2 =
@@ -22,9 +28,10 @@ ColorSpace | Respec =
     clip = core.fmtc.resample (clip, css='444')
     clip = core.fmtc.matrix (clip, mats='$select:msg:Select Input Colorspace;240;601;709;2020$', matd='$select:msg:Select Output Colorspace;240;601;709;2020$')
     clip = core.fmtc.resample (clip, css='420')
-    clip = core.fmtc.bitdepth (clip, bits=8, fulls=$select:msg:Select Input Range;Limited|False;Full|True$, fulld=$select:msg:Select Output Range;Limited|False;Full|True$)
+    clip = core.fmtc.bitdepth (clip, bits=10, fulls=$select:msg:Select Input Range;Limited|False;Full|True$, fulld=$select:msg:Select Output Range;Limited|False;Full|True$)
 
 ColorSpace | Transfer = clip = core.fmtc.transfer(clip, transs='$select:msg:Select Input;Linear;470m;470bg;240m;SRGB;709;2020;2084$', transd='$select:msg:Select Output;Linear;470m;470bg;240m;SRGB;709;2020;2084$')
+ColorYUV | Curve = clip = core.curve.Curve(clip, preset=$select:None|0, r=[0,0, 0.5,0.5, 1,1], g=[0,0, 0.5,0.5, 1,1], b=[0,0, 0.5,0.5, 1,1], master=[0,0, 0.5,0.5, 1,1];Color Negative (RGB)|1;Cross Process (RGB)|2;Darker|3;Increase Contrast|4;Lighter|5;Linear Contrast|6;Medium Contrast|7;Negative|8;Strong Contrast|9;Vintage (RGB)|10$, acv=None, planes=[0, 1, 2])
 ColorYUV | Grayscale = clip = mvsfunc.GrayScale(clip)
 ColorYUV | Tweak = clip = adjust.Tweak(clip, $select:Neutral|hue=0, sat=1, bright=0, cont=1;Brighter|hue=0, sat=1, bright=20, cont=1.04;Less Contrast|hue=0, sat=0.95, bright=8, cont=0.9;Vivid|hue=0, sat=1.15, bright=2, cont=1.08;Desaturate|hue=0, sat=0, bright=0, cont=1$)
 Convert | BitDepth (fmtc) = clip = core.fmtc.bitdepth(clip, bits=$select:msg:Select BitDepth;8;10;12;16;32$)
@@ -39,11 +46,12 @@ Dither | To RGB / YUV = clip = $select:To RGB|mvsfunc.ToRGB;To YUV|mvsfunc.ToYUV
 
 Tonemap | Placebo =
     clip = core.fmtc.bitdepth(clip, bits=16)
-    clip = core.placebo.Tonemap(clip, src_csp=$select:msg:Select Source Color Space;SDR|0;HDR10|1;HLG|2;Dolby Vision|3$, dst_csp=$select:msg:Select Target Color Space;SDR|0;HDR10|1;HLG|2;Dolby Vision|3$, dynamic_peak_detection=$select:msg:Dynamic Peak Detection?;Yes (default)|1;No|0$, tone_mapping_function=$select:msg:Tonemapping Function;Auto (default)|0;Clip|1;ST2094_40|2;ST2094_10|3;BT2390|4;BT2446a|5;Spline|6;Reinhard|7;Mobius|8;Hable|9;Gamma|10;Linear|11$, tone_mapping_mode=$select:msg:Tonemapping Mode;Auto (default)|0;RGB|1;MAX|2;HYBRID|3;LUMA|4$)
-    # clip = clip.resize.Bicubic(format = vs.YUV420P8)
+    clip = core.placebo.Tonemap(clip, src_csp=$select:msg:Select Source Color Space;SDR|0;HDR10 (Default)|1;HLG|2;Dolby Vision|3$, dst_csp=$select:msg:Select Target Color Space;SDR (Default)|0;HDR10|1;HLG|2;Dolby Vision|3$, dynamic_peak_detection=$select:msg:Dynamic Peak Detection?;Yes (Default)|1;No|0$, tone_mapping_function=$select:msg:Tonemapping Function;Auto (Default)|0;Clip|1;ST2094_40|2;ST2094_10|3;BT2390|4;BT2446a|5;Spline|6;Reinhard|7;Mobius|8;Hable|9;Gamma|10;Linear|11$, tone_mapping_mode=$select:msg:Tonemapping Mode;Auto (Default)|0;RGB|1;MAX|2;HYBRID|3;LUMA|4$)
+    # clip = clip.resize.Bicubic(format = vs.YUV420P10)
 
 [Crop]
 Crop = clip = core.std.Crop(clip, %crop_left%, %crop_right%, %crop_top%, %crop_bottom%)
+Hardware Encoder = # hardware encoder crops
 
 [Field]
 Deinterlace | Bwdif = clip = core.bwdif.Bwdif(clip, field=$select:msg:Select Mode;Same rate, keep Bottom field|0;Same rate, keep Top field|1;Double rate, starts with Bottom|2;Double rate, starts with Top|3$)
@@ -189,14 +197,14 @@ TTempSmooth = clip =  core.ttmpsm.TTempSmooth(clip)
 VagueDenoiser = clip = core.vd.VagueDenoiser(clip=clip, method=$select:msg:Select Strength;Soft|1;Hard|0$)
 
 [Resize]
+Advanced | Hardware Encoder = # hardware encoder resizes
 Advanced | NNEDI3_rpow2 = clip = nnedi3_rpow2.nnedi3_rpow2(clip, rfactor=$select:msg:Enlargement Factor?;2;4;8;16$, kernel="$select:msg:Center Shift Correction Algorithm?;bicubic;bilinear;blackman;box;gauss;lanczos;point;sinc;spline;spline16;spline36;spline64$", width=%target_width%, height=%target_height%)
-Advanced | ReSampleHQ = clip = resamplehq.resample_hq(clip, %target_width%, %target_height%, kernel='$select:Point;Rect;Linear;Cubic;Lanczos;Blackman;Blackmanminlobe;Spline16;Spline36;Spline64;Gauss;Sinc$')
+Advanced | ReSampleHQ = clip = resamplehq.resample_hq(clip, %target_width%, %target_height%, kernel='$select:Point;Linear;Cubic;Lanczos;Spline16;Spline36$')
 Resize... = clip = $select:Bilinear|core.resize.Bilinear;Bicubic|core.resize.Bicubic;Point|core.resize.Point;Lanczos|core.resize.Lanczos;Spline16|core.resize.Spline16;Spline36|core.resize.Spline36;Spline64|core.resize.Spline64;Dither_Resize16|Dither.Resize16nr;Resample|core.fmtc.resample$(clip, %target_width%, %target_height%)
 
 [Restoration]
 Chroma Fix | Bifrost = clip = core.bifrost.Bifrost(clip, luma_thresh=10.0, variation=5, interlaced=$select:msg:Is the input video Interlaced?;Yes (Default)|True;No|False$, blockx=4, blocky=4)
 Chroma Fix | CNR2 = clip = core.cnr2.Cnr2(clip, mode="oxx", scdthr=10.0, ln=35, lm=192, un=47, um=255, vn=47, vm=255, scenechroma=False)
-Chroma Fix | DeRainbow = clip = havsfunc.LUTDeRainbow(clip, cthresh=10, ythresh=10, y=True, linkUV=True, mask=False)
 Chroma Fix | DotKill | DotKillS = clip = core.dotkill.DotKillS(clip, iterations=1)
 
 Chroma Fix | DotKill | DotKillZ =
@@ -207,6 +215,7 @@ Chroma Fix | DotKill | DotKillT =
     # 3:2 pulldown NTSC source, spatio-temporal
     clip = core.dotkill.DotKillT(clip, order=0, offset=0, dupthresh=64, tratio=3)
 
+Chroma Fix | LUTDeRainbow = clip = havsfunc.LUTDeRainbow(clip, cthresh=10, ythresh=10, y=True, linkUV=True, mask=False)
 DeBand | Legacy = $select:GradFun3|clip = muvsfunc.GradFun3(src=clip, mode=6, smode=1);f3kdb|clip = core.f3kdb.Deband(clip)$
 DeBand | f3kdb Neo = clip = core.neo_f3kdb.Deband(clip, y=64, cb=64, cr=64, grainy=0, grainc=0)
 DeBlock | Auto-Deblock = clip = fvsfunc.AutoDeblock(clip)

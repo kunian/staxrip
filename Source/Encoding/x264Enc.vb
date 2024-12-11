@@ -3,6 +3,7 @@ Imports System.Text
 
 Imports StaxRip.VideoEncoderCommandLine
 Imports StaxRip.UI
+Imports System.Text.RegularExpressions
 
 <Serializable()>
 Public Class x264Enc
@@ -31,6 +32,12 @@ Public Class x264Enc
         Set(value As x264Params)
             ParamsValue = value
         End Set
+    End Property
+
+    Overrides ReadOnly Property Codec As String
+        Get
+            Return "h264"
+        End Get
     End Property
 
     Overrides ReadOnly Property OutputExt As String
@@ -84,6 +91,117 @@ Public Class x264Enc
         End Using
     End Sub
 
+    Overrides Sub SetMetaData(sourceFile As String)
+        If Not p.ImportVUIMetadata Then Exit Sub
+
+        Dim cl = ""
+        Dim colour_primaries = MediaInfo.GetVideo(sourceFile, "colour_primaries")
+
+        Select Case colour_primaries
+            Case "BT.2020"
+                If colour_primaries.Contains("BT.2020") Then
+                    cl += " --colorprim bt2020"
+                End If
+            Case "BT.709"
+                If colour_primaries.Contains("BT.709") Then
+                    cl += " --colorprim bt709"
+                End If
+        End Select
+
+        Dim transfer_characteristics = MediaInfo.GetVideo(sourceFile, "transfer_characteristics")
+
+        Select Case transfer_characteristics
+            Case "PQ", "SMPTE ST 2084"
+                If transfer_characteristics.Contains("SMPTE ST 2084") Or transfer_characteristics.Contains("PQ") Then
+                    cl += " --transfer smpte2084"
+                End If
+            Case "BT.709"
+                If transfer_characteristics.Contains("BT.709") Then
+                    cl += " --transfer bt709"
+                End If
+            Case "HLG"
+                cl += " --transfer arib-std-b67"
+        End Select
+
+        Dim matrix_coefficients = MediaInfo.GetVideo(sourceFile, "matrix_coefficients")
+
+        Select Case matrix_coefficients
+            Case "BT.2020 non-constant"
+                If matrix_coefficients.Contains("BT.2020 non-constant") Then
+                    cl += " --colormatrix bt2020nc"
+                End If
+            Case "BT.709"
+                cl += " --colormatrix bt709"
+        End Select
+
+        Dim color_range = MediaInfo.GetVideo(sourceFile, "colour_range")
+
+        Select Case color_range
+            Case "Limited"
+                cl += " --range limited"
+            Case "Full"
+                cl += " --range full"
+        End Select
+
+        Dim ChromaSubsampling_Position = MediaInfo.GetVideo(sourceFile, "ChromaSubsampling_Position")
+        Dim chromaloc = New String(ChromaSubsampling_Position.Where(Function(c) c.IsDigit()).ToArray())
+
+        If Not String.IsNullOrEmpty(chromaloc) AndAlso chromaloc <> "0" Then
+            cl += $" --chromaloc {chromaloc}"
+        End If
+
+        Dim MasteringDisplay_ColorPrimaries = MediaInfo.GetVideo(sourceFile, "MasteringDisplay_ColorPrimaries")
+        Dim MasteringDisplay_Luminance = MediaInfo.GetVideo(sourceFile, "MasteringDisplay_Luminance")
+
+        If MasteringDisplay_ColorPrimaries <> "" AndAlso MasteringDisplay_Luminance <> "" Then
+            Dim luminanceMatch = Regex.Match(MasteringDisplay_Luminance, "min: ([\d\.]+) cd/m2, max: ([\d\.]+) cd/m2")
+
+            If luminanceMatch.Success Then
+                Dim luminanceMin = luminanceMatch.Groups(1).Value.ToDouble * 10000
+                Dim luminanceMax = luminanceMatch.Groups(2).Value.ToDouble * 10000
+
+                If MasteringDisplay_ColorPrimaries.Contains("Display P3") Then
+                    cl += " --output-depth 10"
+                    cl += $" --master-display ""G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L({luminanceMax},{luminanceMin})"""
+                    cl += " --hdr10"
+                    cl += " --repeat-headers"
+                    cl += " --range limited"
+                    cl += " --hrd"
+                    cl += " --aud"
+                End If
+
+                If MasteringDisplay_ColorPrimaries.Contains("DCI P3") Then
+                    cl += " --output-depth 10"
+                    cl += $" --master-display ""G(13250,34500)B(7500,3000)R(34000,16000)WP(15700,17550)L({luminanceMax},{luminanceMin})"""
+                    cl += " --hdr10"
+                    cl += " --repeat-headers"
+                    cl += " --range limited"
+                    cl += " --hrd"
+                    cl += " --aud"
+                End If
+
+                If MasteringDisplay_ColorPrimaries.Contains("BT.2020") Then
+                    cl += " --output-depth 10"
+                    cl += $" --master-display ""G(8500,39850)B(6550,2300)R(35400,14600)WP(15635,16450)L({luminanceMax},{luminanceMin})"""
+                    cl += " --hdr10"
+                    cl += " --repeat-headers"
+                    cl += " --range limited"
+                    cl += " --hrd"
+                    cl += " --aud"
+                End If
+            End If
+        End If
+
+        Dim MaxCLL = MediaInfo.GetVideo(sourceFile, "MaxCLL").Trim.Left(" ").ToInt
+        Dim MaxFALL = MediaInfo.GetVideo(sourceFile, "MaxFALL").Trim.Left(" ").ToInt
+
+        If MaxCLL <> 0 OrElse MaxFALL <> 0 Then
+            cl += $" --max-cll ""{MaxCLL},{MaxFALL}"""
+        End If
+
+        ImportCommandLine(cl)
+    End Sub
+
     Overrides Sub RunCompCheck()
         If Not g.VerifyRequirements OrElse Not g.IsValidSource Then
             Exit Sub
@@ -117,12 +235,12 @@ Public Class x264Enc
         End If
 
         script.Filters.Add(New VideoFilter("aaa", "aaa", code))
-        script.Path = p.TempDir + p.TargetFile.Base + "_CompCheck." + script.FileType
+        script.Path = Path.Combine(p.TempDir, p.TargetFile.Base + "_CompCheck." + script.FileType)
         script.Synchronize()
 
         Log.WriteLine(BR + script.GetFullScript + BR)
 
-        Dim commandLine = enc.Params.GetArgs(0, script, p.TempDir + p.TargetFile.Base + "_CompCheck." + OutputExt, True, True)
+        Dim commandLine = enc.Params.GetArgs(0, script, Path.Combine(p.TempDir, p.TargetFile.Base + "_CompCheck." + OutputExt), True, True)
 
         Try
             Encode("Compressibility Check", commandLine, ProcessPriorityClass.Normal)
@@ -133,7 +251,7 @@ Public Class x264Enc
             Exit Sub
         End Try
 
-        Dim bits = (New FileInfo(p.TempDir + p.TargetFile.Base + "_CompCheck." + OutputExt).Length) * 8
+        Dim bits = (New FileInfo(Path.Combine(p.TempDir, p.TargetFile.Base + "_CompCheck." + OutputExt)).Length) * 8
         p.Compressibility = (bits / script.GetFrameCount) / (p.TargetWidth * p.TargetHeight)
 
         OnAfterCompCheck()
@@ -343,6 +461,18 @@ Public Class x264Params
         .IntegerValue = True,
         .Options = {"Disabled", "Variance AQ", "Auto-variance AQ", "Auto-variance AQ with bias to dark scenes"}}
 
+    Property AqStrength As New NumParam With {
+        .Switch = "--aq-strength",
+        .Text = "AQ Strength",
+        .Config = {0, 0, 0.1, 1}}
+
+    Property AqBiasStrength As New NumParam With {
+        .Switch = "--aq-bias-strength",
+        .Text = "AQ Bias Strength",
+        .Init = 1,
+        .Config = {0, 3, 0.05, 2},
+        .VisibleFunc = Function() Aqmode.Value = 3}
+
     Property BAdapt As New OptionParam With {
         .Switch = "--b-adapt",
         .Text = "B-Adapt",
@@ -484,11 +614,6 @@ Public Class x264Params
         .Config = {0, 0, 0.05, 2},
         .Text = "     Trellis"}
 
-    Property AqStrength As New NumParam With {
-        .Switch = "--aq-strength",
-        .Text = "AQ Strength",
-        .Config = {0, 0, 0.1, 1}}
-
     Property DctDecimate As New BoolParam With {
         .NoSwitch = "--no-dct-decimate",
         .Text = "DCT Decimate"}
@@ -605,6 +730,7 @@ Public Class x264Params
         setVal(PsyRD, 1)
         setVal(PsyTrellis, 0)
         setVal(AqStrength, 1)
+        setVal(AqBiasStrength, 1)
         setVal(DctDecimate, True)
         setVal(DeadzoneInter, 21)
         setVal(DeadzoneIntra, 11)
@@ -803,6 +929,7 @@ Public Class x264Params
                     New StringParam With {.Switch = "--zones", .Text = "Zones"},
                     AqMode,
                     AqStrength,
+                    AqBiasStrength,
                     Ipratio,
                     Pbratio,
                     Qcomp,
@@ -1135,7 +1262,7 @@ Public Class x264Params
             End If
 
             If Mode.Value = x264RateMode.TwoPass OrElse Mode.Value = x264RateMode.ThreePass Then
-                sb.Append(" --stats " + (p.TempDir + p.TargetFile.Base + ".stats").Escape)
+                sb.Append(" --stats " + (Path.Combine(p.TempDir, p.TargetFile.Base + ".stats")).Escape)
             End If
 
             If (Mode.Value = x264RateMode.ThreePass AndAlso (pass = 1 OrElse pass = 3)) OrElse

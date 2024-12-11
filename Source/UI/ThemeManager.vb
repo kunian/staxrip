@@ -1,5 +1,5 @@
 ﻿Public NotInheritable Class ThemeManager
-    Private Const _defaultThemeName = "Dark | Blue"
+    Private Const _defaultThemeName = "Darker | Blue"
 
     Private Shared _current As Theme
     Private Shared _themes As List(Of Theme)
@@ -32,7 +32,7 @@
         New Tuple(Of String, Integer, Integer)("Purple", 281, 355),
         New Tuple(Of String, Integer, Integer)("Magenta", 292, 355),
         New Tuple(Of String, Integer, Integer)("Pink", 313, 10),
-        New Tuple(Of String, Integer, Integer)("Rose", 335, -1)
+        New Tuple(Of String, Integer, Integer)("Rose", 340, -1)
     }
 
 
@@ -262,7 +262,7 @@
                     .LabelProgressBar = New ControlsThemeColors.LabelProgressBarThemeColors() With {
                         .BackColor = _controlBackColor,
                         .ForeColor = _foreColor.AddLuminance(0.1),
-                        .ProgressColor = _backSelectedColor.AddLuminance(-0.075)
+                        .ProgressColor = _backSelectedColor.AddSaturation(0.25).AddLuminance(-0.125)
                     },
                     .ListBox = New ControlsThemeColors.ListBoxThemeColors() With {
                         .BackColor = _controlBackColor,
@@ -465,6 +465,10 @@
                     .ExeFileBackColor = General.Controls.RichTextBox.BackColor,
                     .ExeFileForeColor = _outputHighlightingForeColor.SetHue(20),
                     .ExeFileFontStyles = {},
+ _
+                    .PipeBackColor = General.Controls.RichTextBox.BackColor,
+                    .PipeForeColor = _outputHighlightingForeColor.SetHue(0).AddLuminance(-0.2),
+                    .PipeFontStyles = {FontStyle.Bold},
  _
                     .MediaFileBackColor = General.Controls.RichTextBox.BackColor,
                     .MediaFileForeColor = _outputHighlightingForeColor.SetHue(160).AddLuminance(-0.15),
